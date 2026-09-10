@@ -63,3 +63,7 @@ qt_add_executable(lain
 target_link_libraries(lain PRIVATE lain_core lain_coreplugin)
 
 install(TARGETS lain RUNTIME DESTINATION bin)
+
+# Testes headless (Qt Quick Test + QTest) sob ctest, com QT_QPA_PLATFORM=offscreen.
+enable_testing()
+add_subdirectory(tests)
