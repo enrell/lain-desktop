@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    name: linux/x86_64 AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: System deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libmpv-dev ffmpeg patchelf libxcb-cursor0
+      - uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: "6.8.4"
+          cache: true
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+      - name: Package AppImage
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications \
+                   AppDir/usr/share/icons/hicolor/256x256/apps AppDir/usr/share/doc
+          install -Dm755 build/lain AppDir/usr/bin/lain-desktop
+          install -Dm644 packaging/lain-desktop.desktop AppDir/usr/share/applications/lain-desktop.desktop
+          install -Dm644 packaging/lain-desktop.png AppDir/usr/share/icons/hicolor/256x256/apps/lain-desktop.png
+          for d in /usr/share/doc/libmpv2* /usr/share/doc/libmpv-dev*; do
+            [ -e "$d" ] || continue
+            cp -r "$d" AppDir/usr/share/doc/
+          done
+
+          wget -q -O linuxdeploy \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q -O linuxdeploy-plugin-qt \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QML_SOURCES_PATHS="$PWD/qml"
+
+          ./linuxdeploy --appdir AppDir
+          extra=()
+          if [ -e /usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0 ]; then
+            extra=(--library /usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0)
+          fi
+          ./linuxdeploy --appdir AppDir --plugin qt "${extra[@]}" --output appimage
+
+          shopt -s nullglob
+          for f in lain*.AppImage; do
+            mv "$f" "lain-desktop_${VERSION}_linux_x86_64.AppImage"
+          done
+          shopt -u nullglob
+          test -f "lain-desktop_${VERSION}_linux_x86_64.AppImage"
+          sha256sum "lain-desktop_${VERSION}_linux_x86_64.AppImage" > "lain-desktop_${VERSION}_linux_x86_64.AppImage.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lain-desktop-appimage
+          path: lain-desktop_*.AppImage*
+          if-no-files-found: error
+
+  release:
+    name: GitHub release + attestation
+    needs: appimage
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum lain-desktop_*.AppImage > checksums.txt
+          cat checksums.txt
+      - uses: actions/attest@v4
+        with:
+          subject-checksums: dist/checksums.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.AppImage dist/*.sha256 dist/checksums.txt \
+            --generate-notes --verify-tag

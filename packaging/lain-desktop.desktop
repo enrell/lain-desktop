@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=lain
+GenericName=Media client
+Comment=Native client for the Lain media server
+Exec=lain-desktop
+Icon=lain-desktop
+Terminal=false
+Categories=AudioVideo;Player;
+Keywords=media;player;lain;
+StartupWMClass=lain
