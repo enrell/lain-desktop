@@ -11,11 +11,25 @@ ColumnLayout {
     signal openMedia(var media)
 
     property string selectedGenre: "All"
-    property string sortMode: "title" // title | year | rating
+    property string sortMode: "title" // title | year
     signal searchRequested(string text)
     signal account()
 
-    readonly property var genres: ["All", "Sci-Fi", "Crime", "Horror", "Animation"]
+    // Gêneros vêm dos próprios dados (enrichment), não de uma lista fixa.
+    readonly property var genres: {
+        var seen = {};
+        var out = ["All"];
+        var list = items || [];
+        for (var i = 0; i < list.length; ++i) {
+            var g = list[i].genre;
+            if (g && g !== "" && !seen[g]) {
+                seen[g] = true;
+                out.push(g);
+            }
+        }
+        out.sort();
+        return out;
+    }
 
     function computeShown() {
         var list = (items || []).slice();
@@ -25,8 +39,6 @@ ColumnLayout {
             list.sort((a, b) => String(a.title).localeCompare(String(b.title)));
         else if (sortMode === "year")
             list.sort((a, b) => Number(b.year) - Number(a.year));
-        else if (sortMode === "rating")
-            list.sort((a, b) => Number(b.rating) - Number(a.rating));
         return list;
     }
     readonly property var shown: computeShown()
@@ -107,8 +119,7 @@ ColumnLayout {
         Repeater {
             model: [
                 { key: "title", label: "Title" },
-                { key: "year", label: "Year" },
-                { key: "rating", label: "Rating" }
+                { key: "year", label: "Year" }
             ]
             delegate: Text {
                 text: modelData.label
@@ -133,6 +144,7 @@ ColumnLayout {
         Layout.topMargin: 20
         Layout.bottomMargin: Tokens.sectionGap
         Layout.preferredHeight: Math.max(320, contentHeight)
+        visible: shown.length > 0
         cellWidth: Tokens.posterWidth + Tokens.cardGap
         cellHeight: Tokens.posterWidth * 1.5 + 56
         boundsBehavior: Flickable.StopAtBounds
@@ -142,5 +154,18 @@ ColumnLayout {
             highlighted: GridView.isCurrentItem
             onOpen: m => openMedia(m)
         }
+    }
+
+    Text {
+        Layout.leftMargin: Tokens.pageMargin
+        Layout.topMargin: 40
+        Layout.bottomMargin: Tokens.sectionGap
+        visible: shown.length === 0
+        text: items && items.length === 0
+            ? "Nenhum título nesta biblioteca. Rode um scan no servidor."
+            : "Nenhum título com esse filtro."
+        color: Tokens.textTertiary
+        font.family: Tokens.fontFamily
+        font.pixelSize: Tokens.bodySize
     }
 }

@@ -258,12 +258,14 @@ void MpvItem::handleEvent(mpv_event *ev) {
         const int err = ef ? ef->error : 0;
         const bool failed =
             (ef && ef->reason == MPV_END_FILE_REASON_ERROR) || err != 0;
+        const bool eof = ef && ef->reason == MPV_END_FILE_REASON_EOF;
         QMetaObject::invokeMethod(
             this,
-            [this, failed, err] {
+            [this, failed, eof, err] {
                 m_errorText = failed ? QString("Playback error (%1)").arg(err)
                                      : QString();
                 emit errorTextChanged();
+                emit endFile(eof);
             },
             Qt::QueuedConnection);
         break;
@@ -284,6 +286,10 @@ void MpvItem::play(const QString &url) {
 
 void MpvItem::playTestPattern() {
     runCmd({"loadfile", "lavfi://testsrc=size=1280x720:rate=30:duration=300"});
+}
+
+void MpvItem::stop() {
+    runCmd({"stop"});
 }
 
 void MpvItem::togglePause() {

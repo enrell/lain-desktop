@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Lain
 import "../theme/Color.js" as Color
+import "../theme/Format.js" as Format
 
 // Header de página: eyebrow à esquerda, busca central com dropdown
 // ao vivo, avatar à direita.
@@ -22,9 +23,17 @@ Rectangle {
         var q = searchInput.text.trim().toLowerCase();
         if (q === "")
             return [];
-        var all = server.movies();
-        return all.filter(m => String(m.title).toLowerCase().indexOf(q) >= 0
-            || String(m.genre).toLowerCase().indexOf(q) >= 0).slice(0, 6);
+        var all = server.catalog || [];
+        var out = [];
+        for (var i = 0; i < all.length && out.length < 6; ++i) {
+            var m = all[i];
+            if (String(m.title).toLowerCase().indexOf(q) >= 0
+                || String(m.displayTitle).toLowerCase().indexOf(q) >= 0
+                || String(m.genre).toLowerCase().indexOf(q) >= 0
+                || String(m.library).toLowerCase().indexOf(q) >= 0)
+                out.push(m);
+        }
+        return out;
     }
 
     RowLayout {
@@ -141,15 +150,26 @@ Rectangle {
                                 anchors.margins: 6
                                 spacing: 12
                                 Rectangle {
+                                    id: thumb
                                     Layout.preferredWidth: 40
                                     Layout.preferredHeight: 56
                                     radius: 6
+                                    clip: true
                                     gradient: Gradient {
                                         GradientStop { position: 0.0; color: Color.shade(modelData.accent, 0.38) }
                                         GradientStop { position: 1.0; color: Color.shade(modelData.accent, 0.15) }
                                     }
+                                    Image {
+                                        id: thumbImage
+                                        anchors.fill: parent
+                                        source: modelData.poster ? modelData.poster : (modelData.cover ? modelData.cover : "")
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        visible: source !== ""
+                                    }
                                     Text {
                                         anchors.centerIn: parent
+                                        visible: thumbImage.status !== Image.Ready
                                         text: String(modelData.title).charAt(0)
                                         color: "white"
                                         opacity: 0.25
@@ -163,14 +183,15 @@ Rectangle {
                                     spacing: 2
                                     Text {
                                         Layout.fillWidth: true
-                                        text: modelData.title
+                                        text: modelData.displayTitle && modelData.displayTitle !== ""
+                                            ? modelData.displayTitle : modelData.title
                                         color: Tokens.textPrimary
                                         font.family: Tokens.fontFamily
                                         font.pixelSize: Tokens.cardTitleSize
                                         elide: Text.ElideRight
                                     }
                                     Text {
-                                        text: modelData.year + " · " + modelData.genre + " · ★ " + Number(modelData.rating).toFixed(1)
+                                        text: Format.searchMeta(modelData)
                                         color: Tokens.textTertiary
                                         font.family: Tokens.fontFamily
                                         font.pixelSize: Tokens.metaSize - 1

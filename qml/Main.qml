@@ -12,8 +12,8 @@ Window {
     title: "lain"
     color: Tokens.bgPrimary
 
-    property var homeData: server.home()
-    property var currentMedia: null
+    property var homeData: server.home
+    property var currentMedia: server.currentMedia
     property string route: "home"
     property string returnRoute: "home"
 
@@ -23,6 +23,7 @@ Window {
         id: page
         anchors.fill: parent
         anchors.leftMargin: Tokens.navRailWidth
+        visible: server.ready
         contentWidth: width
         contentHeight: content.height
         boundsBehavior: Flickable.StopAtBounds
@@ -33,8 +34,8 @@ Window {
                 Layout.fillWidth: true
                 visible: root.route === "home"
                 home: root.homeData
-                onOpenMedia: m => { root.currentMedia = server.media(m.id); root.returnRoute = "home"; root.route = "detail"; }
-                onPlayMedia: m => { root.currentMedia = server.media(m.id); root.route = "player"; }
+                onOpenMedia: m => { root.returnRoute = "home"; root.route = "detail"; server.openMedia(m.id); }
+                onPlayMedia: m => { root.returnRoute = "home"; server.openMedia(m.id); server.requestPlayback(m.id); root.route = "player"; }
                 onSearchRequested: t => searchOverlay.openWith(t)
                 onAccount: root.route = "settings"
             }
@@ -42,10 +43,8 @@ Window {
                 Layout.fillWidth: true
                 visible: root.route === "movies" || root.route === "shows"
                 title: root.route === "shows" ? "Shows" : "Movies"
-                items: root.route === "shows"
-                    ? (root.homeData ? root.homeData.recentlyAdded : [])
-                    : server.movies()
-                onOpenMedia: m => { root.currentMedia = server.media(m.id); root.returnRoute = root.route; root.route = "detail"; }
+                items: root.route === "shows" ? server.shows : server.movies
+                onOpenMedia: m => { root.returnRoute = root.route; root.route = "detail"; server.openMedia(m.id); }
                 onSearchRequested: t => searchOverlay.openWith(t)
                 onAccount: root.route = "settings"
             }
@@ -53,16 +52,27 @@ Window {
                 Layout.fillWidth: true
                 visible: root.route === "detail"
                 media: root.currentMedia
-                onOpenMedia: m => { root.currentMedia = server.media(m.id); }
-                onPlayMedia: m => { root.currentMedia = server.media(m.id); root.route = "player"; }
+                onOpenMedia: m => { server.openMedia(m.id); }
+                onPlayMedia: m => { server.openMedia(m.id); server.requestPlayback(m.id); root.route = "player"; }
                 onBack: root.route = root.returnRoute
+            }
+            CollectionsView {
+                Layout.fillWidth: true
+                visible: root.route === "collections"
+                collections: server.collections
+                onOpenMedia: m => { root.returnRoute = "collections"; root.route = "detail"; server.openMedia(m.id); }
+                onSearchRequested: t => searchOverlay.openWith(t)
+                onAccount: root.route = "settings"
             }
             PlayerView {
                 id: playerView
                 visible: root.route === "player"
                 media: root.currentMedia
                 onToggleFullscreen: root.visibility = root.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
-                onBack: root.route = root.returnRoute
+                onBack: {
+                    root.route = root.returnRoute;
+                    server.refresh();
+                }
             }
             SettingsView {
                 visible: root.route === "settings"
@@ -72,6 +82,7 @@ Window {
                 Layout.topMargin: 8
                 onSearchRequested: t => searchOverlay.openWith(t)
                 onAccount: root.route = "settings"
+                onLoggedOut: root.route = "home"
             }
         }
     }
@@ -82,7 +93,8 @@ Window {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         z: 10
-        visible: root.visibility !== Window.FullScreen
+        visible: server.ready && root.visibility !== Window.FullScreen
+        current: root.route
         onNavigate: r => { root.route = r; }
     }
 
@@ -92,6 +104,7 @@ Window {
     MouseArea {
         anchors.fill: parent
         z: 5
+        enabled: server.ready
         hoverEnabled: true
         acceptedButtons: Qt.NoButton
         onPositionChanged: mouse => {
@@ -104,12 +117,19 @@ Window {
     SearchOverlay {
         id: searchOverlay
         visible: false
-        onOpenMedia: m => { visible = false; root.currentMedia = server.media(m.id); root.returnRoute = root.route; root.route = "detail"; }
+        onOpenMedia: m => {
+            visible = false;
+            server.clearSearch();
+            root.returnRoute = root.route;
+            root.route = "detail";
+            server.openMedia(m.id);
+        }
+        onClosed: server.clearSearch()
     }
 
-    Shortcut { sequence: "Ctrl+F"; onActivated: searchOverlay.openWith("") }
-    Shortcut { sequence: "/"; onActivated: searchOverlay.openWith("") }
-    Shortcut { sequence: "Alt+Left"; onActivated: root.route = "home" }
+    Shortcut { enabled: server.ready; sequence: "Ctrl+F"; onActivated: searchOverlay.openWith("") }
+    Shortcut { enabled: server.ready; sequence: "/"; onActivated: searchOverlay.openWith("") }
+    Shortcut { enabled: server.ready; sequence: "Alt+Left"; onActivated: root.route = "home" }
     Shortcut {
         sequence: "Esc"
         onActivated: {
@@ -132,4 +152,10 @@ Window {
     Shortcut { enabled: root.route === "player"; sequence: "F"; onActivated: playerView.toggleFullscreen() }
     Shortcut { enabled: root.route === "player"; sequence: "A"; onActivated: playerView.cycleAudio() }
     Shortcut { enabled: root.route === "player"; sequence: "S"; onActivated: playerView.cycleSubtitle() }
+
+    LoginView {
+        anchors.fill: parent
+        z: 100
+        visible: !server.ready
+    }
 }

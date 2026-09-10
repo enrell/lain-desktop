@@ -20,6 +20,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("server", &server);
     engine.rootContext()->setContextProperty("omarchy", &theme);
     engine.rootContext()->setContextProperty("buildTs", QStringLiteral(LAIN_BUILD_TS));
+    server.start();
     engine.loadFromModule("Lain", "Main");
     if (engine.rootObjects().isEmpty())
         return -1;

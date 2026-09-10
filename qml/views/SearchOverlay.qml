@@ -3,7 +3,8 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Busca funcional: input grande + resultados ao vivo do catálogo mock.
+// Busca funcional: input grande + resultados ao vivo do servidor
+// (GET /api/search com debounce no client C++).
 Rectangle {
     id: root
     anchors.fill: parent
@@ -18,18 +19,14 @@ Rectangle {
         query = q;
         searchInput.text = q;
         searchInput.forceActiveFocus();
+        server.search(q);
     }
 
     property string query: ""
 
-    readonly property var results: {
-        var all = server.movies();
-        var q = query.trim().toLowerCase();
-        if (q === "")
-            return all.slice(0, 8);
-        return all.filter(m => String(m.title).toLowerCase().indexOf(q) >= 0
-            || String(m.genre).toLowerCase().indexOf(q) >= 0);
-    }
+    readonly property var results: query.trim() === "" ? (server.catalog || []).slice(0, 12)
+                                                       : server.searchResults
+    readonly property int resultCount: results ? results.length : 0
 
     MouseArea {
         anchors.fill: parent
@@ -54,24 +51,40 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 12
                 Text {
-                    text: ""
+                    text: "\uf002"
                     color: Tokens.themeAccent
                     font.family: Tokens.fontFamily
                     font.pixelSize: 20
                 }
                 TextInput {
                     id: searchInput
+                    objectName: "searchInput"
                     Layout.fillWidth: true
                     color: Tokens.textPrimary
                     font.family: Tokens.fontFamily
                     font.pixelSize: 20
-                    onTextChanged: root.query = text
-                    onAccepted: { if (root.results.length > 0) root.openMedia(root.results[0]); }
+                    selectByMouse: true
+                    onTextChanged: {
+                        root.query = text;
+                        server.search(text);
+                    }
+                    onAccepted: { if (root.resultCount > 0) root.openMedia(root.results[0]); }
+                    Text {
+                        anchors.fill: parent
+                        verticalAlignment: Text.AlignVCenter
+                        text: "Buscar na biblioteca…"
+                        color: Tokens.textTertiary
+                        font: searchInput.font
+                        visible: searchInput.text === ""
+                    }
                 }
             }
 
             Text {
-                text: query === "" ? "Suggestions" : results.length + (results.length === 1 ? " result" : " results")
+                text: root.query.trim() === ""
+                    ? "Sugestões"
+                    : server.searching ? "Buscando…"
+                    : root.resultCount + (root.resultCount === 1 ? " resultado" : " resultados")
                 color: Tokens.textTertiary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.metaSize
@@ -88,6 +101,15 @@ Rectangle {
                     media: modelData
                     onOpen: m => root.openMedia(m)
                 }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: root.query.trim() !== "" && !server.searching && root.resultCount === 0
+                text: "Nenhum resultado para '" + root.query.trim() + "'"
+                color: Tokens.textTertiary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
             }
         }
     }

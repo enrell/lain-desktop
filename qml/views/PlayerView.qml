@@ -4,6 +4,8 @@ import Lain
 import "../components"
 
 // Player real sobre libmpv: timeline, volume, faixas, Anime4K, OSD.
+// A fonte vem de server.requestPlayback() (plano direct-play) e o
+// progresso é gravado em janelas de 10s + pausa/seek/fim/saída.
 Item {
     id: playerRoot
     Layout.fillWidth: true
@@ -14,6 +16,9 @@ Item {
     property bool controlsVisible: true
     property string osdText: ""
     property real scrubValue: 0
+    property real pendingResume: 0
+    property bool resumePending: false
+    property string playError: ""
 
     signal toggleFullscreen()
     signal back()
@@ -41,7 +46,11 @@ Item {
         osdText = t;
         osdTimer.restart();
     }
-    function togglePause() { mpv.togglePause(); wake(); }
+    function togglePause() {
+        mpv.togglePause();
+        report(false);
+        wake();
+    }
     function seekBy(d) { mpv.seekBy(d); wake(); }
     function adjustVolume(d) { mpv.setVolume(mpv.volume + d); osd("Volume " + Math.round(mpv.volume + d)); wake(); }
     function toggleMute() { mpv.setMuted(!mpv.muted); wake(); }
@@ -49,16 +58,81 @@ Item {
     function cycleSubtitle() { mpv.cycleSubtitle(); osd("Legenda"); wake(); }
     function cycleShader() { mpv.cycleShaderPreset(); osd(mpv.shaderInfo); wake(); }
 
+    // Grava progresso só quando há posição significativa; completed no fim.
+    function report(completed) {
+        if (!media || !media.id || !hasStream || mpv.duration <= 0)
+            return;
+        if (!completed && mpv.position < 1)
+            return;
+        server.reportProgress(media.id, mpv.position, mpv.duration, completed === true);
+    }
+    function teardown() {
+        report(false);
+        mpv.stop();
+        hasStream = false;
+        resumePending = false;
+        pendingResume = 0;
+        playError = "";
+    }
+
     MpvItem {
         id: mpv
         anchors.fill: parent
-        Component.onCompleted: {
-            var u = media ? server.streamUrl(media.id) : "";
-            if (u) {
-                play(u);
-                hasStream = true;
+    }
+
+    Connections {
+        target: server
+        function onPlaybackReady(url, positionSec, durationSec) {
+            if (!playerRoot.visible)
+                return;
+            playerRoot.playError = "";
+            playerRoot.hasStream = true;
+            mpv.play(url);
+            if (positionSec > 5 && (durationSec <= 0 || positionSec < durationSec - 5)) {
+                playerRoot.pendingResume = positionSec;
+                playerRoot.resumePending = true;
+                playerRoot.osd("Retomando…");
+            } else {
+                playerRoot.resumePending = false;
+                playerRoot.pendingResume = 0;
+            }
+            playerRoot.wake();
+        }
+        function onPlaybackFailed(reason) {
+            playerRoot.playError = reason;
+            playerRoot.hasStream = false;
+        }
+    }
+    Connections {
+        target: mpv
+        // A duração chega depois do loadfile; é o ponto seguro p/ seek.
+        function onDurationChanged() {
+            if (playerRoot.resumePending && mpv.duration > 0) {
+                mpv.seek(playerRoot.pendingResume);
+                playerRoot.resumePending = false;
+                playerRoot.pendingResume = 0;
             }
         }
+        function onEndFile(eof) {
+            if (eof && playerRoot.media && playerRoot.media.id && mpv.duration > 0)
+                server.reportProgress(playerRoot.media.id, mpv.duration, mpv.duration, true);
+            playerRoot.controlsVisible = true;
+        }
+    }
+
+    Timer {
+        id: progressTimer
+        interval: 10000
+        repeat: true
+        running: playerRoot.visible && playerRoot.hasStream && !mpv.paused
+        onTriggered: playerRoot.report(false)
+    }
+
+    onVisibleChanged: {
+        if (!visible)
+            teardown();
+        else
+            wake();
     }
 
     // Wake em qualquer movimento; clique no vídeo pausa
@@ -106,7 +180,7 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 200 } }
     }
 
-    // Sem fonte: overlay de teste
+    // Sem fonte: carregando, erro do plano ou test pattern
     Rectangle {
         anchors.fill: parent
         z: 4
@@ -117,7 +191,10 @@ Item {
             spacing: 12
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: media ? media.title : "Player"
+                text: playerRoot.media
+                    ? (playerRoot.media.displayTitle && playerRoot.media.displayTitle !== ""
+                        ? playerRoot.media.displayTitle : playerRoot.media.title)
+                    : "Player"
                 color: Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.sectionSize
@@ -125,27 +202,62 @@ Item {
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: "Sem fonte do backend (mock)"
+                visible: playerRoot.playError === ""
+                text: "Preparando reprodução…"
                 color: Tokens.textTertiary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.metaSize
+            }
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.maximumWidth: 520
+                visible: playerRoot.playError !== ""
+                text: playerRoot.playError
+                color: Tokens.themeUrgent
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
             }
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 220
                 Layout.preferredHeight: Tokens.buttonHeight
+                visible: playerRoot.playError !== ""
                 radius: Tokens.radiusMd
                 color: Tokens.themeAccent
                 Text {
                     anchors.centerIn: parent
-                    text: "Test pattern"
+                    text: "Tentar novamente"
                     color: "black"
                     font.family: Tokens.fontFamily
                     font.bold: true
                 }
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: { mpv.playTestPattern(); hasStream = true; wake(); }
+                    onClicked: {
+                        playerRoot.playError = "";
+                        if (playerRoot.media && playerRoot.media.id)
+                            server.requestPlayback(playerRoot.media.id);
+                    }
+                }
+            }
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 220
+                Layout.preferredHeight: Tokens.buttonHeight
+                radius: Tokens.radiusMd
+                color: Tokens.surface2
+                Text {
+                    anchors.centerIn: parent
+                    text: "Test pattern"
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontFamily
+                    font.bold: true
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: { mpv.playTestPattern(); playerRoot.hasStream = true; playerRoot.wake(); }
                 }
             }
             Text {
@@ -184,7 +296,10 @@ Item {
             }
             Text {
                 Layout.fillWidth: true
-                text: media ? media.title : "Test Pattern"
+                text: playerRoot.media
+                    ? (playerRoot.media.displayTitle && playerRoot.media.displayTitle !== ""
+                        ? playerRoot.media.displayTitle : playerRoot.media.title)
+                    : "Test Pattern"
                 color: Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: 16
@@ -235,7 +350,12 @@ Item {
                     value: scrubbing ? playerRoot.scrubValue : mpv.position
                     fillColor: media && media.accent ? media.accent : Tokens.themeAccent
                     onScrubbed: v => { playerRoot.scrubValue = v; }
-                    onReleased: v => { mpv.seek(v); }
+                    onReleased: v => {
+                        mpv.seek(v);
+                        playerRoot.scrubValue = v;
+                        if (playerRoot.media && playerRoot.media.id && mpv.duration > 0)
+                            server.reportProgress(playerRoot.media.id, v, mpv.duration, false);
+                    }
                 }
                 Text {
                     text: fmt(mpv.duration)

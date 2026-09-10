@@ -2,6 +2,7 @@ import QtQuick
 import Lain
 import QtQuick.Layouts
 import "../theme/Color.js" as Color
+import "../theme/Format.js" as Format
 
 // Poster 2:3. Normal: arte + título. Metadata só no hover/focus.
 Rectangle {
@@ -11,6 +12,7 @@ Rectangle {
     color: "transparent"
     property var media
     property string accent: media && media.accent ? media.accent : "#8A93A3"
+    readonly property string artwork: media && (media.poster || media.cover) ? (media.poster || media.cover) : ""
     property bool highlighted: false
     signal open(var media)
     signal play(var media)
@@ -20,15 +22,25 @@ Rectangle {
         width: parent.width
         height: parent.width * 1.5
         radius: Tokens.radiusMd
+        clip: true
         scale: (card.highlighted || hover.containsMouse) ? 1.03 : 1.0
         Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         gradient: Gradient {
             GradientStop { position: 0.0; color: Color.shade(card.accent, 0.38) }
             GradientStop { position: 1.0; color: Color.shade(card.accent, 0.15) }
         }
+        Image {
+            id: artImage
+            anchors.fill: parent
+            source: card.artwork
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            visible: source !== ""
+        }
         // Marca d'água: inicial do título, textura em vez de caixa chapada
         Text {
             anchors.centerIn: parent
+            visible: artImage.status !== Image.Ready
             text: card.media ? card.media.title.charAt(0) : ""
             color: "white"
             opacity: 0.08
@@ -65,7 +77,7 @@ Rectangle {
         }
         Text {
             width: parent.width
-            text: card.media ? card.media.year + " · " + card.media.quality : ""
+            text: Format.cardMeta(card.media)
             color: Tokens.textTertiary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize - 1

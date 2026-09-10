@@ -3,14 +3,31 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Detail mock (§24): hero cinematográfico + cast + relacionados +
-// extras + ficha técnica. Tudo do server.media(id).
+// Detail (§24): hero cinematográfico + relacionados + ficha técnica.
+// Seções sem dados (cast/extras no servidor v0.1) simplesmente não aparecem.
 ColumnLayout {
     property var media
     signal playMedia(var media)
     signal openMedia(var media)
     signal back()
     spacing: 0
+
+    readonly property var related: media && media.related ? media.related : []
+    readonly property var cast: media && media.cast ? media.cast : []
+    readonly property var extras: media && media.extras ? media.extras : []
+
+    readonly property var techRows: {
+        var t = media && media.tech ? media.tech : ({});
+        var labels = { container: "Container", size: "Size", library: "Library", identifier: "Identifier" };
+        var order = ["container", "size", "library", "identifier"];
+        var rows = [];
+        for (var i = 0; i < order.length; ++i) {
+            var v = t[order[i]];
+            if (v && String(v) !== "")
+                rows.push({ label: labels[order[i]], value: String(v) });
+        }
+        return rows;
+    }
 
     Hero {
         Layout.fillWidth: true
@@ -49,6 +66,7 @@ ColumnLayout {
 
         ColumnLayout {
             Layout.fillWidth: true
+            visible: cast.length > 0
             spacing: 12
             Text {
                 text: "Cast"
@@ -63,29 +81,32 @@ ColumnLayout {
                 orientation: ListView.Horizontal
                 spacing: Tokens.cardGap
                 boundsBehavior: Flickable.StopAtBounds
-                model: parent.parent.media ? parent.parent.media.cast : []
+                model: cast
                 delegate: PersonCard { person: modelData }
             }
         }
 
         MediaRow {
             Layout.fillWidth: true
+            visible: related.length > 0
             title: "More Like This"
             rowHeight: Tokens.posterWidth * 1.5 + 52
-            model: media ? media.related : []
+            model: related
             delegate: PosterCard { media: modelData; onOpen: m => openMedia(m) }
         }
 
         MediaRow {
             Layout.fillWidth: true
+            visible: extras.length > 0
             title: "Extras"
             rowHeight: Tokens.landscapeWidth * 9 / 16 + 34
-            model: media ? media.extras : []
+            model: extras
             delegate: LandscapeCard { media: modelData; onOpen: m => openMedia(m) }
         }
 
         ColumnLayout {
             Layout.fillWidth: true
+            visible: techRows.length > 0
             spacing: 12
             Text {
                 text: "Media Info"
@@ -96,24 +117,37 @@ ColumnLayout {
             }
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 148
+                Layout.preferredHeight: techColumn.implicitHeight + 40
                 radius: Tokens.radiusMd
                 color: Tokens.surface1
                 border.color: Tokens.borderSubtle
-                GridLayout {
+                ColumnLayout {
+                    id: techColumn
                     anchors.fill: parent
                     anchors.margins: 20
-                    columns: 2
-                    columnSpacing: 24
-                    rowSpacing: 8
-                    Text { text: "Video"; color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-                    Text { text: media && media.tech ? media.tech.video : ""; color: Tokens.textPrimary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-                    Text { text: "Audio"; color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-                    Text { text: media && media.tech ? media.tech.audio : ""; color: Tokens.textPrimary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-                    Text { text: "Container"; color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-                    Text { text: media && media.tech ? media.tech.container : ""; color: Tokens.textPrimary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-                    Text { text: "Director"; color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-                    Text { text: media ? media.director : ""; color: Tokens.textPrimary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
+                    spacing: 8
+                    Repeater {
+                        model: techRows
+                        delegate: RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 24
+                            Text {
+                                Layout.preferredWidth: 120
+                                text: modelData.label
+                                color: Tokens.textTertiary
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.value
+                                color: Tokens.textPrimary
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                                elide: Text.ElideMiddle
+                            }
+                        }
+                    }
                 }
             }
         }

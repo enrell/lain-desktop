@@ -2,8 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import Lain
 import "../theme/Color.js" as Color
+import "../theme/Format.js" as Format
 
-// Hero: backdrop = wash da cor da mídia + gradientes de legibilidade.
+// Hero: backdrop = artwork quando existe, senão wash da cor da mídia.
 // Conteúdo alinhado ao gutter único (Tokens.pageMargin).
 Rectangle {
     id: hero
@@ -11,14 +12,24 @@ Rectangle {
     color: Tokens.bgPrimary
     property var media
     property string accent: media && media.accent ? media.accent : "#8A93A3"
+    readonly property string artwork: media && (media.cover || media.poster) ? (media.cover || media.poster) : ""
+    readonly property string displayTitle: media ? (media.displayTitle && media.displayTitle !== "" ? media.displayTitle : media.title) : ""
     signal play(var media)
     signal moreInfo(var media)
 
-    // Wash procedural da mídia (placeholder até chegar artwork real)
+    // Wash procedural da mídia (fallback sob o artwork)
     Rectangle {
         anchors.fill: parent
         color: Color.shade(hero.accent, 0.24)
         Behavior on color { ColorAnimation { duration: 400 } }
+    }
+    Image {
+        anchors.fill: parent
+        source: hero.artwork
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        opacity: 0.55
+        visible: source !== ""
     }
     // Legibilidade à esquerda (texto) — horizontal
     Rectangle {
@@ -56,7 +67,8 @@ Rectangle {
         Text {
             Layout.topMargin: 14
             Layout.fillWidth: true
-            text: media ? media.title : ""
+            objectName: "heroTitle"
+            text: hero.displayTitle
             color: Tokens.textPrimary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.heroSize
@@ -68,7 +80,7 @@ Rectangle {
         }
         Text {
             Layout.topMargin: 10
-            text: media ? media.year + "  ·  " + media.runtime + "  ·  ★ " + Number(media.rating).toFixed(1) + "  ·  " + media.quality : ""
+            text: Format.heroMeta(hero.media)
             color: Tokens.textSecondary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize + 1
@@ -77,6 +89,7 @@ Rectangle {
         Text {
             Layout.topMargin: 10
             Layout.maximumWidth: 640
+            visible: text !== ""
             text: media ? media.overview : ""
             color: Tokens.textSecondary
             font.family: Tokens.fontFamily

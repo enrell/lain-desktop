@@ -49,6 +49,7 @@ public:
 
     Q_INVOKABLE void play(const QString &url);
     Q_INVOKABLE void playTestPattern();
+    Q_INVOKABLE void stop();
     Q_INVOKABLE void togglePause();
     Q_INVOKABLE void setPaused(bool p);
     Q_INVOKABLE void seek(double seconds);
@@ -72,6 +73,7 @@ signals:
     void tracksChanged();
     void shaderChanged();
     void errorTextChanged();
+    void endFile(bool eof);
 
 private:
     void eventLoop();
