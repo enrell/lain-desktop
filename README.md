@@ -48,6 +48,7 @@ Linux with Qt **6.5+** and libmpv (headers + pkg-config), plus CMake
 ## Build & run
 
 ```sh
+mise install   # cmake + ninja pinned in .mise.toml (optional)
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./build/lain

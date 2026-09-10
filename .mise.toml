@@ -1,0 +1,6 @@
+# Build tooling pinning for development. Qt 6 and libmpv come from the
+# distribution (see README requirements); mise covers the generator and
+# the build runner so `mise install` reproduces the CI toolchain.
+[tools]
+cmake = "4.4.3"
+ninja = "1.13.2"
