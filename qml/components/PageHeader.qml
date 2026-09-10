@@ -162,7 +162,8 @@ Rectangle {
                                     Image {
                                         id: thumbImage
                                         anchors.fill: parent
-                                        source: modelData.poster ? modelData.poster : (modelData.cover ? modelData.cover : "")
+                                        source: modelData.poster ? modelData.poster
+                                            : (modelData.cover ? modelData.cover : modelData.thumb)
                                         fillMode: Image.PreserveAspectCrop
                                         asynchronous: true
                                         visible: source !== ""

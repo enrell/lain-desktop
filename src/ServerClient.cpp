@@ -210,10 +210,14 @@ void ServerClient::logout() {
     m_libraries.clear();
     m_currentMedia = QVariantMap();
     m_playbackError.clear();
+    m_metadataProviders.clear();
+    m_enrichStatus = QStringLiteral("idle");
     emit homeChanged();
     emit catalogChanged();
     emit collectionsChanged();
     emit librariesChanged();
+    emit metadataProvidersChanged();
+    emit enrichStatusChanged();
     emit currentMediaChanged();
     emit playbackErrorChanged();
     clearError();
@@ -267,6 +271,8 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
         reply = m_net->post(request, payload);
     else if (method == QLatin1String("PUT"))
         reply = m_net->put(request, payload);
+    else if (method == QLatin1String("DELETE"))
+        reply = m_net->deleteResource(request);
     else
         reply = m_net->get(request);
 
@@ -306,6 +312,35 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
 void ServerClient::loadAfterLogin() {
     loadLibraries();
     loadHome();
+    loadPlugins();
+}
+
+void ServerClient::loadPlugins() {
+    // Superfície de operador: para usuários comuns o 403 é silencioso.
+    requestJson("GET", QStringLiteral("/api/plugins"), {}, {}, true,
+                [this](bool ok, int, const QJsonDocument &doc, const QString &) {
+                    if (!ok)
+                        return;
+                    QVariantList providers;
+                    const QJsonArray infos = doc.object().value("provider_info").toArray();
+                    for (const QJsonValue &v : infos) {
+                        const QJsonObject info = v.toObject();
+                        bool servesMetadata = false;
+                        const QJsonArray caps = info.value("capabilities").toArray();
+                        for (const QJsonValue &c : caps) {
+                            if (c.toString() == QLatin1String("lain.metadata.search@1"))
+                                servesMetadata = true;
+                        }
+                        if (!servesMetadata)
+                            continue;
+                        const QString provider = info.value("id").toString();
+                        providers << QVariantMap{{"id", provider},
+                                                 {"name", providerLabel(provider)},
+                                                 {"healthy", info.value("healthy").toBool()}};
+                    }
+                    m_metadataProviders = providers;
+                    emit metadataProvidersChanged();
+                });
 }
 
 void ServerClient::loadLibraries() {
@@ -652,6 +687,80 @@ void ServerClient::reportProgress(const QString &id, double position, double dur
                 });
 }
 
+// ------------------------------------------------------------------ thumbnail/enrich
+
+QString ServerClient::thumbnailUrlFor(const QString &id, double at, int width) const {
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("t"), QString::number(at, 'f', 1));
+    query.addQueryItem(QStringLiteral("w"), QString::number(width));
+    if (!m_token.isEmpty())
+        query.addQueryItem(QStringLiteral("token"), m_token);
+    return apiUrl(QStringLiteral("/api/items/%1/thumbnail").arg(encodeId(id)), query).toString();
+}
+
+QString ServerClient::thumbnailUrl(const QString &id, double at, int width) const {
+    if (id.isEmpty())
+        return {};
+    return thumbnailUrlFor(id, at > 0 ? at : 10.0, width > 0 ? width : 480);
+}
+
+void ServerClient::enrichItem(const QString &id, const QString &provider) {
+    if (!ready() || id.isEmpty())
+        return;
+    m_enrichStatus = QStringLiteral("running");
+    emit enrichStatusChanged();
+    QUrlQuery query;
+    if (!provider.isEmpty())
+        query.addQueryItem(QStringLiteral("provider"), provider);
+    requestJson("POST", QStringLiteral("/api/catalog/%1/enrich").arg(encodeId(id)), {}, query, true,
+                [this, id](bool ok, int status, const QJsonDocument &doc, const QString &err) {
+                    m_enrichStatus = QStringLiteral("idle");
+                    emit enrichStatusChanged();
+                    if (!ok) {
+                        setError(status == 403 ? QStringLiteral("Apenas administradores podem enriquecer.")
+                                               : err);
+                        return;
+                    }
+                    applyEnrichment(id, doc.object());
+                });
+}
+
+void ServerClient::removeEnrichment(const QString &id) {
+    if (!ready() || id.isEmpty())
+        return;
+    m_enrichStatus = QStringLiteral("running");
+    emit enrichStatusChanged();
+    requestJson("DELETE", QStringLiteral("/api/catalog/%1/enrich").arg(encodeId(id)), {}, {}, true,
+                [this, id](bool ok, int status, const QJsonDocument &, const QString &err) {
+                    m_enrichStatus = QStringLiteral("idle");
+                    emit enrichStatusChanged();
+                    if (!ok) {
+                        setError(status == 403 ? QStringLiteral("Apenas administradores podem remover.")
+                                               : err);
+                        return;
+                    }
+                    m_enrichment.remove(id);
+                    m_enrichKnown.insert(id);
+                    rebuildItemViews(id);
+                });
+}
+
+void ServerClient::applyEnrichment(const QString &id, const QJsonObject &overlay) {
+    m_enrichment.insert(id, overlay.toVariantMap());
+    m_enrichKnown.insert(id);
+    rebuildItemViews(id);
+}
+
+// Re-normaliza cards e detalhe depois de uma mudança de overlay, sem
+// refetch: o enrichment recém-baixado já está no cache.
+void ServerClient::rebuildItemViews(const QString &id) {
+    rebuildCatalog();
+    if (!m_currentMedia.isEmpty() && m_currentMedia.value("id").toString() == id)
+        openMedia(id);
+    else if (!m_home.isEmpty())
+        loadHome();
+}
+
 // ---------------------------------------------------------------------- busca
 
 void ServerClient::search(const QString &query) {
@@ -779,6 +888,11 @@ QVariantMap ServerClient::normalize(const QJsonObject &item) const {
         {"overview", synopsis},
         {"poster", enrichment.value("poster").toString()},
         {"cover", enrichment.value("cover").toString()},
+        {"thumb", m_token.isEmpty() ? QString() : thumbnailUrlFor(id, 10.0, 480)},
+        {"enriched", !enrichment.isEmpty()},
+        {"enrichProvider", enrichment.value("provider").toString()},
+        {"enrichProviderLabel", providerLabel(enrichment.value("provider").toString())},
+        {"enrichFetchedAt", enrichment.value("fetched_at").toDouble()},
         {"runtime", duration > 0.0 ? humanDuration(duration) : QString()},
         {"rating", 0.0},
         {"progress", fraction},
@@ -849,4 +963,23 @@ QString ServerClient::accentFor(const QString &seed) {
 
 QString ServerClient::joinGenres(const QStringList &genres) {
     return genres.join(QStringLiteral(" · "));
+}
+
+QString ServerClient::providerLabel(const QString &provider) {
+    static const QHash<QString, QString> known{
+        {QStringLiteral("lain-metadata-nfo"), QStringLiteral("NFO")},
+        {QStringLiteral("lain-metadata-kitsu"), QStringLiteral("Kitsu")},
+        {QStringLiteral("lain-metadata-anilist"), QStringLiteral("AniList")},
+        {QStringLiteral("lain-metadata-jikan"), QStringLiteral("Jikan")},
+    };
+    const auto it = known.constFind(provider);
+    if (it != known.constEnd())
+        return it.value();
+    QString label = provider;
+    const QString prefix = QStringLiteral("lain-metadata-");
+    if (label.startsWith(prefix))
+        label = label.mid(prefix.size());
+    if (!label.isEmpty())
+        label[0] = label[0].toUpper();
+    return label;
 }

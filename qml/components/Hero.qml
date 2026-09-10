@@ -12,7 +12,8 @@ Rectangle {
     color: Tokens.bgPrimary
     property var media
     property string accent: media && media.accent ? media.accent : "#8A93A3"
-    readonly property string artwork: media && (media.cover || media.poster) ? (media.cover || media.poster) : ""
+    readonly property string artwork: media && (media.cover || media.poster || media.thumb)
+                                       ? (media.cover || media.poster || media.thumb) : ""
     readonly property string displayTitle: media ? (media.displayTitle && media.displayTitle !== "" ? media.displayTitle : media.title) : ""
     signal play(var media)
     signal moreInfo(var media)

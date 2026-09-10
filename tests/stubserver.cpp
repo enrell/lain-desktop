@@ -81,7 +81,7 @@ QJsonObject enrichmentFor(const QString &id) {
     if (id == QLatin1String("movie-1")) {
         return QJsonObject{
             {"item_id", id},
-            {"provider", "stub"},
+            {"provider", "lain-metadata-nfo"},
             {"remote_id", "remote-movie"},
             {"title", "Some Movie"},
             {"year", 2019},
@@ -94,7 +94,7 @@ QJsonObject enrichmentFor(const QString &id) {
     if (id.startsWith(QLatin1String("show-"))) {
         return QJsonObject{
             {"item_id", id},
-            {"provider", "stub"},
+            {"provider", "lain-metadata-nfo"},
             {"remote_id", "remote-show"},
             {"title", "Frieren: Beyond Journey's End"},
             {"year", 2023},
@@ -301,6 +301,44 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
                                      {"total", items.size()},
                                      {"limit", limit},
                                      {"offset", offset}});
+    }
+
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/plugins")) {
+        const QJsonArray metadataCaps{"lain.metadata.search@1", "lain.metadata.resolve@1"};
+        status = 200;
+        return json(200, QJsonObject{
+                             {"composition", QJsonArray{}},
+                             {"providers", QJsonArray{"lain-metadata-anilist", "lain-metadata-nfo"}},
+                             {"provider_info", QJsonArray{
+                                 QJsonObject{{"id", "lain-metadata-anilist"}, {"capabilities", metadataCaps}, {"healthy", true}},
+                                 QJsonObject{{"id", "lain-metadata-nfo"}, {"capabilities", metadataCaps}, {"healthy", true}},
+                                 QJsonObject{{"id", "lain-playback-default"}, {"capabilities", QJsonArray{"lain.playback.plan@1"}}, {"healthy", true}},
+                             }},
+                             {"events", QJsonArray{}},
+                         });
+    }
+
+    if (path.startsWith(QLatin1String("/api/catalog/")) && path.endsWith(QLatin1String("/enrich"))) {
+        const int prefix = int(qstrlen("/api/catalog/"));
+        const QString id = path.mid(prefix, path.size() - prefix - int(qstrlen("/enrich")));
+        if (findItem(id).isEmpty()) {
+            status = 404;
+            return json(404, QJsonObject{{"error", "unknown item"}}, "Not Found");
+        }
+        if (method == QLatin1String("DELETE")) {
+            status = 200;
+            return json(200, QJsonObject{{"status", "ok"}});
+        }
+        if (method == QLatin1String("POST")) {
+            QJsonObject overlay = enrichmentFor(id);
+            const QString provider = query.queryItemValue("provider");
+            if (!provider.isEmpty())
+                overlay.insert("provider", provider);
+            overlay.insert("synopsis", "Refreshed by stub.");
+            overlay.insert("fetched_at", 1700000900);
+            status = 200;
+            return json(200, overlay);
+        }
     }
 
     if (method == QLatin1String("GET") && path.startsWith(QLatin1String("/api/catalog/"))) {

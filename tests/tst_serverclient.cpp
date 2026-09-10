@@ -150,6 +150,48 @@ private slots:
         QVERIFY(m_client->errorMessage().contains(QStringLiteral("Sessão")));
     }
 
+    void loadsMetadataProvidersForAdmins() {
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->metadataProviders().size(), 2);
+        const QVariantMap first = m_client->metadataProviders().first().toMap();
+        QCOMPARE(first.value("id").toString(), QStringLiteral("lain-metadata-anilist"));
+        QCOMPARE(first.value("name").toString(), QStringLiteral("AniList"));
+        QVERIFY(first.value("healthy").toBool());
+    }
+
+    void enrichItemRefreshesOverlay() {
+        QVERIFY(startReadyClient());
+        m_client->openMedia(QStringLiteral("show-1"));
+        QTRY_COMPARE(m_client->currentMedia().value("enrichProviderLabel").toString(), QStringLiteral("NFO"));
+        QVERIFY(!m_client->currentMedia().value("overview").toString().contains("Refreshed"));
+
+        m_client->enrichItem(QStringLiteral("show-1"), QStringLiteral("lain-metadata-anilist"));
+        QTRY_COMPARE(m_client->enrichStatus(), QStringLiteral("idle"));
+        QTRY_COMPARE(m_client->currentMedia().value("enrichProviderLabel").toString(), QStringLiteral("AniList"));
+        QVERIFY(m_client->currentMedia().value("overview").toString().contains(QStringLiteral("Refreshed")));
+        QVERIFY(m_client->currentMedia().value("enriched").toBool());
+    }
+
+    void removeEnrichmentClearsOverlay() {
+        QVERIFY(startReadyClient());
+        m_client->openMedia(QStringLiteral("show-1"));
+        QTRY_VERIFY(m_client->currentMedia().value("enriched").toBool());
+
+        m_client->removeEnrichment(QStringLiteral("show-1"));
+        QTRY_COMPARE(m_client->enrichStatus(), QStringLiteral("idle"));
+        QTRY_VERIFY(!m_client->currentMedia().value("enriched").toBool());
+        QVERIFY(m_client->currentMedia().value("poster").toString().isEmpty());
+    }
+
+    void thumbnailUrlCarriesTokenAndParams() {
+        QVERIFY(startReadyClient());
+        const QString url = m_client->thumbnailUrl(QStringLiteral("show-1"), 8.0, 320);
+        QVERIFY(url.contains(QStringLiteral("/api/items/show-1/thumbnail")));
+        QVERIFY(url.contains(QStringLiteral("t=8.0")));
+        QVERIFY(url.contains(QStringLiteral("w=320")));
+        QVERIFY(url.contains(QStringLiteral("token=test-token")));
+    }
+
 private:
     bool startReadyClient() {
         m_client->setServerUrl(m_stub->baseUrl());

@@ -48,6 +48,9 @@ class ServerClient : public QObject {
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchChanged)
     Q_PROPERTY(bool searching READ searching NOTIFY searchChanged)
 
+    Q_PROPERTY(QVariantList metadataProviders READ metadataProviders NOTIFY metadataProvidersChanged)
+    Q_PROPERTY(QString enrichStatus READ enrichStatus NOTIFY enrichStatusChanged)
+
     Q_PROPERTY(QVariantMap currentMedia READ currentMedia NOTIFY currentMediaChanged)
     Q_PROPERTY(bool loadingItem READ loadingItem NOTIFY currentMediaChanged)
     Q_PROPERTY(QString playbackError READ playbackError NOTIFY playbackErrorChanged)
@@ -76,6 +79,9 @@ public:
     QVariantList searchResults() const { return m_search; }
     bool searching() const { return m_searching; }
 
+    QVariantList metadataProviders() const { return m_metadataProviders; }
+    QString enrichStatus() const { return m_enrichStatus; }
+
     QVariantMap currentMedia() const { return m_currentMedia; }
     bool loadingItem() const { return m_loadingItem; }
     QString playbackError() const { return m_playbackError; }
@@ -94,6 +100,10 @@ public:
     Q_INVOKABLE void search(const QString &query);
     Q_INVOKABLE void clearSearch();
 
+    Q_INVOKABLE QString thumbnailUrl(const QString &id, double at, int width) const;
+    Q_INVOKABLE void enrichItem(const QString &id, const QString &provider);
+    Q_INVOKABLE void removeEnrichment(const QString &id);
+
 signals:
     void serverUrlChanged();
     void stateChanged();
@@ -105,6 +115,8 @@ signals:
     void collectionsChanged();
     void librariesChanged();
     void searchChanged();
+    void metadataProvidersChanged();
+    void enrichStatusChanged();
     void currentMediaChanged();
     void playbackErrorChanged();
 
@@ -140,6 +152,9 @@ private:
     void loadHome();
     void buildHome(const QJsonArray &recent, const QJsonArray &cont);
     void rebuildCollections();
+    void loadPlugins();
+    void applyEnrichment(const QString &id, const QJsonObject &overlay);
+    void rebuildItemViews(const QString &id);
 
     QJsonObject rawItem(const QString &id) const;
     QVariantMap normalize(const QJsonObject &item) const;
@@ -152,6 +167,8 @@ private:
     static QString fileExtension(const QString &path);
     static QString accentFor(const QString &seed);
     static QString joinGenres(const QStringList &genres);
+    static QString providerLabel(const QString &provider);
+    QString thumbnailUrlFor(const QString &id, double at, int width) const;
 
     QNetworkAccessManager *m_net = nullptr;
     QTimer *m_searchDebounce = nullptr;
@@ -180,6 +197,9 @@ private:
     bool m_searching = false;
     QString m_pendingQuery;
     QString m_activeQuery;
+
+    QVariantList m_metadataProviders;
+    QString m_enrichStatus = QStringLiteral("idle");
 
     QVariantMap m_currentMedia;
     bool m_loadingItem = false;

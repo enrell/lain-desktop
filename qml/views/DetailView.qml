@@ -6,7 +6,9 @@ import "../components"
 // Detail (§24): hero cinematográfico + relacionados + ficha técnica.
 // Seções sem dados (cast/extras no servidor v0.1) simplesmente não aparecem.
 ColumnLayout {
+    id: root
     property var media
+    property string selectedProvider: ""
     signal playMedia(var media)
     signal openMedia(var media)
     signal back()
@@ -146,6 +148,132 @@ ColumnLayout {
                                 font.pixelSize: Tokens.metaSize
                                 elide: Text.ElideMiddle
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Enrichment (admin): provider, enriquecer/atualizar, remover.
+        ColumnLayout {
+            id: metadataSection
+            objectName: "metadataSection"
+            Layout.fillWidth: true
+            visible: server.ready && server.role === "admin"
+            spacing: 12
+            Text {
+                text: "Metadata"
+                color: Tokens.textPrimary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.sectionSize
+                font.weight: Font.DemiBold
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: metaColumn.implicitHeight + 40
+                radius: Tokens.radiusMd
+                color: Tokens.surface1
+                border.color: Tokens.borderSubtle
+                ColumnLayout {
+                    id: metaColumn
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 12
+                    Text {
+                        Layout.fillWidth: true
+                        text: {
+                            if (media && media.enriched) {
+                                var by = media.enrichProviderLabel ? media.enrichProviderLabel : media.enrichProvider;
+                                var extra = media.indexedTitle ? "  ·  indexado como \"" + media.indexedTitle + "\"" : "";
+                                return "Overlay de " + by + extra;
+                            }
+                            return "Sem metadados enriquecidos para este item.";
+                        }
+                        color: Tokens.textSecondary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Repeater {
+                            model: [{ id: "", name: "Auto" }].concat(server.metadataProviders)
+                            delegate: Rectangle {
+                                Layout.preferredHeight: 30
+                                Layout.preferredWidth: providerText.implicitWidth + 24
+                                radius: Tokens.radiusPill
+                                color: root.selectedProvider === modelData.id
+                                    ? Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.16))
+                                    : Tokens.surface2
+                                border.color: root.selectedProvider === modelData.id
+                                    ? Qt.alpha(Tokens.themeAccent, 0.5)
+                                    : Tokens.borderSubtle
+                                Text {
+                                    id: providerText
+                                    anchors.centerIn: parent
+                                    text: modelData.name
+                                    color: root.selectedProvider === modelData.id ? Tokens.themeAccent : Tokens.textSecondary
+                                    font.family: Tokens.fontFamily
+                                    font.pixelSize: Tokens.metaSize
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.selectedProvider = modelData.id
+                                }
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                    RowLayout {
+                        spacing: 10
+                        Rectangle {
+                            objectName: "enrichButton"
+                            Layout.preferredWidth: 150
+                            Layout.preferredHeight: 36
+                            radius: Tokens.radiusMd
+                            color: Tokens.themeAccent
+                            opacity: server.enrichStatus === "running" ? 0.6 : 1
+                            Text {
+                                anchors.centerIn: parent
+                                text: media && media.enriched ? "Atualizar metadados" : "Enriquecer"
+                                color: "black"
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                                font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: server.enrichStatus !== "running" && media && media.id
+                                onClicked: server.enrichItem(media.id, root.selectedProvider)
+                            }
+                        }
+                        Rectangle {
+                            objectName: "removeEnrichButton"
+                            visible: media && media.enriched
+                            Layout.preferredWidth: 110
+                            Layout.preferredHeight: 36
+                            radius: Tokens.radiusMd
+                            color: Tokens.surface2
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Remover"
+                                color: Tokens.textPrimary
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: server.enrichStatus !== "running"
+                                onClicked: server.removeEnrichment(media.id)
+                            }
+                        }
+                        Text {
+                            visible: server.enrichStatus === "running"
+                            text: "Buscando metadados…"
+                            color: Tokens.textTertiary
+                            font.family: Tokens.fontFamily
+                            font.pixelSize: Tokens.metaSize
                         }
                     }
                 }

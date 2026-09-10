@@ -11,7 +11,8 @@ Rectangle {
     color: "transparent"
     property var media
     property string accent: media && media.accent ? media.accent : "#8A93A3"
-    readonly property string artwork: media && (media.cover || media.poster) ? (media.cover || media.poster) : ""
+    readonly property string artwork: media && (media.cover || media.poster || media.thumb)
+                                       ? (media.cover || media.poster || media.thumb) : ""
     signal open(var media)
 
     Rectangle {
