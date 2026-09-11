@@ -10,3 +10,7 @@ CMakeUserPresets.json
 .idea/
 .vscode/
 *.log
+
+# agent session tooling (never commit)
+.opencode/
+opencode.json
