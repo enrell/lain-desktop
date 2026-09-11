@@ -2,8 +2,8 @@ import QtQuick
 import QtTest
 import Lain
 
-// Contrato de playback do cliente (o vídeo em si não renderiza offscreen):
-// plano direct -> sinal playbackReady com URL autenticada e retomada.
+// Client playback contract (video itself does not render offscreen):
+// a direct plan emits playbackReady with an authenticated URL and resume.
 TestCase {
     id: testCase
     name: "PlaybackApi"

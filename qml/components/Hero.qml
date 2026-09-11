@@ -4,8 +4,7 @@ import Lain
 import "../theme/Color.js" as Color
 import "../theme/Format.js" as Format
 
-// Hero: backdrop = artwork quando existe, senão wash da cor da mídia.
-// Conteúdo alinhado ao gutter único (Tokens.pageMargin).
+// Hero uses artwork when available and a media-color wash otherwise.
 Rectangle {
     id: hero
     height: 480
@@ -18,7 +17,7 @@ Rectangle {
     signal play(var media)
     signal moreInfo(var media)
 
-    // Wash procedural da mídia (fallback sob o artwork)
+    // Procedural media wash below artwork.
     Rectangle {
         anchors.fill: parent
         color: Color.shade(hero.accent, 0.24)
@@ -32,7 +31,7 @@ Rectangle {
         opacity: 0.55
         visible: source !== ""
     }
-    // Legibilidade à esquerda (texto) — horizontal
+    // Horizontal text-legibility gradient.
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
@@ -42,7 +41,7 @@ Rectangle {
             GradientStop { position: 0.75; color: Qt.alpha(Tokens.bgPrimary, 0.0) }
         }
     }
-    // Assentamento na base (transição p/ o resto da página) — vertical
+    // Vertical transition into the page background.
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
@@ -60,7 +59,7 @@ Rectangle {
         anchors.bottomMargin: 36
         spacing: 0
 
-        // Marca de accent: mesmo gesto das progress bars
+        // Accent mark shared with the progress-bar visual language.
         Rectangle {
             width: 28; height: 3; radius: 2
             color: hero.accent
@@ -110,7 +109,7 @@ Rectangle {
                 color: hero.accent
                 Text {
                     anchors.centerIn: parent
-                    text: "▶  Play"
+                    text: qsTr("▶  Play")
                     color: "black"
                     font.family: Tokens.fontFamily
                     font.pixelSize: Tokens.bodySize
@@ -125,7 +124,7 @@ Rectangle {
                 color: Tokens.surface2
                 Text {
                     anchors.centerIn: parent
-                    text: "More Info"
+                    text: qsTr("More Info")
                     color: Tokens.textPrimary
                     font.family: Tokens.fontFamily
                     font.pixelSize: Tokens.bodySize

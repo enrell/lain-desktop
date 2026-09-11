@@ -1,6 +1,7 @@
 #include "ServerClient.h"
 
 #include <QCryptographicHash>
+#include <QFile>
 #include <QFileInfo>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -37,9 +38,13 @@ ServerClient::ServerClient(QObject *parent) : QObject(parent) {
     m_searchDebounce->setSingleShot(true);
     m_searchDebounce->setInterval(180);
     connect(m_searchDebounce, &QTimer::timeout, this, [this] { issueSearch(m_pendingQuery); });
+    QSettings settings;
+    m_autoResume = settings.value(QStringLiteral("playback/auto_resume"), true).toBool();
+    m_autoplayNext = settings.value(QStringLiteral("playback/autoplay_next"), true).toBool();
+    m_seriesAutoplay = settings.value(QStringLiteral("playback/series_autoplay")).toMap();
 }
 
-// ---------------------------------------------------------------- sessão/estado
+// --------------------------------------------------------------- session/state
 
 void ServerClient::start() {
     QSettings settings;
@@ -167,7 +172,7 @@ void ServerClient::login(const QString &username, const QString &password) {
                 [this, username](bool ok, int status, const QJsonDocument &doc, const QString &err) {
                     setBusy(false);
                     if (!ok) {
-                        setError(status == 401 ? QStringLiteral("Usuário ou senha inválidos.")
+                        setError(status == 401 ? tr("Invalid username or password.")
                                                : errorFrom(doc, err));
                         return;
                     }
@@ -238,7 +243,7 @@ void ServerClient::refresh() {
     loadHome();
 }
 
-// ------------------------------------------------------------------ requisições
+// -------------------------------------------------------------------- requests
 
 QUrl ServerClient::apiUrl(const QString &path, const QUrlQuery &query) const {
     QString base = m_serverUrl;
@@ -271,6 +276,8 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
         reply = m_net->post(request, payload);
     else if (method == QLatin1String("PUT"))
         reply = m_net->put(request, payload);
+    else if (method == QLatin1String("PATCH"))
+        reply = m_net->sendCustomRequest(request, "PATCH", payload);
     else if (method == QLatin1String("DELETE"))
         reply = m_net->deleteResource(request);
     else
@@ -288,7 +295,7 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
         if (status == 401 && auth) {
             clearSession();
             setState(QStringLiteral("login"));
-            setError(QStringLiteral("Sessão expirada. Entre novamente."));
+            setError(tr("Session expired. Sign in again."));
             if (cb)
                 cb(false, status, doc, QStringLiteral("unauthorized"));
             return;
@@ -297,7 +304,7 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
         if (networkError || status >= 400) {
             const QString fallback = networkError && !reply->errorString().isEmpty()
                                          ? reply->errorString()
-                                         : QStringLiteral("Falha na requisição (%1)").arg(status);
+                                         : tr("Request failed (%1)").arg(status);
             if (cb)
                 cb(false, status, doc, errorFrom(doc, fallback));
             return;
@@ -307,24 +314,34 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
     });
 }
 
-// --------------------------------------------------------------------- catálogo
+// --------------------------------------------------------------------- catalog
 
 void ServerClient::loadAfterLogin() {
+    m_users.clear();
+    m_pluginInfo.clear();
+    m_composition.clear();
+    emit usersChanged();
+    emit pluginsChanged();
     loadLibraries();
     loadHome();
     loadPlugins();
+    loadUsers();
+    refreshScanStatus();
 }
 
 void ServerClient::loadPlugins() {
-    // Superfície de operador: para usuários comuns o 403 é silencioso.
+    // Operator-only surface: a 403 is expected for regular users.
     requestJson("GET", QStringLiteral("/api/plugins"), {}, {}, true,
                 [this](bool ok, int, const QJsonDocument &doc, const QString &) {
                     if (!ok)
                         return;
+                    const QJsonObject root = doc.object();
                     QVariantList providers;
-                    const QJsonArray infos = doc.object().value("provider_info").toArray();
-                    for (const QJsonValue &v : infos) {
+                    QVariantList infos;
+                    const QJsonArray arr = root.value("provider_info").toArray();
+                    for (const QJsonValue &v : arr) {
                         const QJsonObject info = v.toObject();
+                        infos << info.toVariantMap();
                         bool servesMetadata = false;
                         const QJsonArray caps = info.value("capabilities").toArray();
                         for (const QJsonValue &c : caps) {
@@ -339,8 +356,18 @@ void ServerClient::loadPlugins() {
                                                  {"healthy", info.value("healthy").toBool()}};
                     }
                     m_metadataProviders = providers;
+                    m_pluginInfo = infos;
+                    m_composition = root.value("composition").toObject().toVariantMap();
                     emit metadataProvidersChanged();
+                    emit pluginsChanged();
                 });
+}
+
+void ServerClient::setAdminStatus(const QString &status) {
+    if (m_adminStatus == status)
+        return;
+    m_adminStatus = status;
+    emit adminChanged();
 }
 
 void ServerClient::loadLibraries() {
@@ -365,15 +392,34 @@ void ServerClient::loadLibraries() {
 }
 
 void ServerClient::loadCatalog() {
+    loadCatalogPage(0, {});
+}
+
+void ServerClient::loadCatalogPage(int offset, const QJsonArray &accumulated) {
     const quint64 gen = m_generation;
+    static const int kPageLimit = 500;
     QUrlQuery query;
-    query.addQueryItem(QStringLiteral("limit"), QStringLiteral("500"));
+    query.addQueryItem(QStringLiteral("limit"), QString::number(kPageLimit));
     query.addQueryItem(QStringLiteral("sort"), QStringLiteral("title"));
+    if (offset > 0)
+        query.addQueryItem(QStringLiteral("offset"), QString::number(offset));
     requestJson("GET", QStringLiteral("/api/catalog"), {}, query, true,
-                [this, gen](bool ok, int, const QJsonDocument &doc, const QString &) {
+                [this, gen, accumulated](bool ok, int, const QJsonDocument &doc, const QString &) {
                     if (gen != m_generation || !ok)
                         return;
-                    m_raw = doc.object().value("items").toArray();
+                    QJsonArray next = accumulated;
+                    const QJsonArray page = doc.object().value("items").toArray();
+                    for (const QJsonValue &v : page)
+                        next.append(v);
+                    const int total = doc.object().value("total").toInt(-1);
+                    const bool lastPage = page.size() < kPageLimit;
+                    const bool reachedTotal = total >= 0 && next.size() >= total;
+                    const bool done = total >= 0 ? reachedTotal : lastPage;
+                    if (!done) {
+                        loadCatalogPage(next.size(), next);
+                        return;
+                    }
+                    m_raw = next;
                     m_rawById.clear();
                     QStringList ids;
                     for (const QJsonValue &v : m_raw) {
@@ -406,8 +452,187 @@ void ServerClient::rebuildCatalog() {
     m_catalog = all;
     m_movies = movies;
     m_shows = shows;
+    buildSeries();
     emit catalogChanged();
     rebuildCollections();
+}
+
+QString ServerClient::seriesTitleFor(const QVariantMap &card) {
+    const QString display = card.value("displayTitle").toString().trimmed();
+    return display.isEmpty() ? card.value("title").toString().trimmed() : display;
+}
+
+QString ServerClient::seriesKey(const QString &libraryId, const QString &seriesTitle) {
+    const QByteArray hash = QCryptographicHash::hash(
+        (libraryId + QLatin1String("\x00") + seriesTitle).toUtf8(), QCryptographicHash::Sha1);
+    return QStringLiteral("series:") + QString::fromLatin1(hash.toHex().left(16));
+}
+
+// Series hierarchy (DD-030): episodes group by library plus series title.
+// Season and episode numbers come from the identifier; season <= 0 or
+// episode <= 0 lands in Specials so strict numbering never misfiles extras.
+void ServerClient::buildSeries() {
+    QHash<QString, QVariantList> bySeries;
+    QHash<QString, QVariantMap> meta;
+    QStringList order;
+    for (const QVariant &v : m_shows) {
+        const QVariantMap card = v.toMap();
+        const QString title = seriesTitleFor(card);
+        if (title.isEmpty())
+            continue;
+        const QString lib = card.value("library_id").toString();
+        const QString key = seriesKey(lib, title);
+        if (!bySeries.contains(key)) {
+            bySeries.insert(key, {});
+            order << key;
+            meta.insert(key, QVariantMap{{"id", key},
+                                         {"title", title},
+                                         {"library_id", lib},
+                                         {"library", card.value("library").toString()},
+                                         {"poster", card.value("poster").toString()},
+                                         {"cover", card.value("cover").toString()},
+                                         {"year", card.value("year").toInt()},
+                                         {"accent", card.value("accent").toString()}});
+        }
+        QVariantList episodes = bySeries.value(key);
+        // Keep the first enriched artwork/year found for the series row.
+        QVariantMap info = meta.value(key);
+        if (info.value("poster").toString().isEmpty() && !card.value("poster").toString().isEmpty()) {
+            info["poster"] = card.value("poster");
+            info["cover"] = card.value("cover");
+            meta[key] = info;
+        }
+        episodes << card;
+        bySeries[key] = episodes;
+    }
+    std::sort(order.begin(), order.end(), [&meta](const QString &a, const QString &b) {
+        return meta.value(a).value("title").toString().localeAwareCompare(
+                   meta.value(b).value("title").toString())
+               < 0;
+    });
+    QVariantList series;
+    for (const QString &key : order) {
+        QVariantList cards = bySeries.value(key);
+        std::sort(cards.begin(), cards.end(), [](const QVariant &a, const QVariant &b) {
+            const QVariantMap ca = a.toMap(), cb = b.toMap();
+            if (ca.value("season").toInt() != cb.value("season").toInt())
+                return ca.value("season").toInt() < cb.value("season").toInt();
+            if (ca.value("episode").toInt() != cb.value("episode").toInt())
+                return ca.value("episode").toInt() < cb.value("episode").toInt();
+            return ca.value("displayTitle").toString().localeAwareCompare(
+                       cb.value("displayTitle").toString())
+                   < 0;
+        });
+        QHash<int, QVariantList> seasons;
+        QList<int> seasonOrder;
+        QVariantList specials;
+        for (const QVariant &v : cards) {
+            const QVariantMap card = v.toMap();
+            const int season = card.value("season").toInt();
+            const int episode = card.value("episode").toInt();
+            if (season > 0 && episode > 0) {
+                if (!seasons.contains(season))
+                    seasonOrder << season;
+                seasons[season] << card;
+            } else {
+                specials << card;
+            }
+        }
+        std::sort(seasonOrder.begin(), seasonOrder.end());
+        QVariantList seasonRows;
+        int mainCount = 0;
+        for (int s : seasonOrder) {
+            mainCount += seasons.value(s).size();
+            seasonRows << QVariantMap{{"season", s}, {"episodes", seasons.value(s)}};
+        }
+        QVariantMap info = meta.value(key);
+        info["seasons"] = seasonRows;
+        info["specials"] = specials;
+        info["episodeCount"] = mainCount;
+        info["seasonCount"] = seasonOrder.size();
+        info["specialsCount"] = specials.size();
+        series << info;
+    }
+    m_series = series;
+}
+
+QString ServerClient::seriesIdFor(const QString &id) const {
+    if (id.isEmpty())
+        return {};
+    for (const QVariant &v : m_catalog) {
+        const QVariantMap card = v.toMap();
+        if (card.value("id").toString() == id)
+            return seriesKey(card.value("library_id").toString(), seriesTitleFor(card));
+    }
+    return {};
+}
+
+QString ServerClient::seriesAutoplayMode(const QString &seriesId) const {
+    const QString mode = m_seriesAutoplay.value(seriesId).toString();
+    if (mode == QLatin1String("on") || mode == QLatin1String("off"))
+        return mode;
+    return QStringLiteral("default");
+}
+
+void ServerClient::setSeriesAutoplay(const QString &seriesId, const QString &mode) {
+    if (seriesId.isEmpty())
+        return;
+    const QString v = mode.trimmed().toLower();
+    const QString normalized = (v == QLatin1String("on") || v == QLatin1String("off"))
+                                   ? v
+                                   : QStringLiteral("default");
+    if (normalized == QLatin1String("default"))
+        m_seriesAutoplay.remove(seriesId);
+    else
+        m_seriesAutoplay.insert(seriesId, normalized);
+    QSettings().setValue(QStringLiteral("playback/series_autoplay"), m_seriesAutoplay);
+    emit playbackSettingsChanged();
+}
+
+QString ServerClient::nextEpisodeId(const QString &id) const {
+    if (id.isEmpty() || !m_autoplayNext)
+        return {};
+    const QString seriesId = seriesIdFor(id);
+    if (!seriesId.isEmpty() && seriesAutoplayMode(seriesId) == QLatin1String("off"))
+        return {};
+    for (const QVariant &s : m_series) {
+        const QVariantMap info = s.toMap();
+        if (info.value("id").toString() != seriesId)
+            continue;
+        const QVariantList seasons = info.value("seasons").toList();
+        for (int i = 0; i < seasons.size(); ++i) {
+            const QVariantList episodes = seasons.at(i).toMap().value("episodes").toList();
+            for (int j = 0; j < episodes.size(); ++j) {
+                if (episodes.at(j).toMap().value("id").toString() != id)
+                    continue;
+                if (j + 1 < episodes.size())
+                    return episodes.at(j + 1).toMap().value("id").toString();
+                if (i + 1 < seasons.size()) {
+                    const QVariantList next = seasons.at(i + 1).toMap().value("episodes").toList();
+                    if (!next.isEmpty())
+                        return next.first().toMap().value("id").toString();
+                }
+                return {};
+            }
+        }
+    }
+    return {};
+}
+
+void ServerClient::setAutoResume(bool resume) {
+    if (m_autoResume == resume)
+        return;
+    m_autoResume = resume;
+    QSettings().setValue(QStringLiteral("playback/auto_resume"), resume);
+    emit playbackSettingsChanged();
+}
+
+void ServerClient::setAutoplayNext(bool next) {
+    if (m_autoplayNext == next)
+        return;
+    m_autoplayNext = next;
+    QSettings().setValue(QStringLiteral("playback/autoplay_next"), next);
+    emit playbackSettingsChanged();
 }
 
 void ServerClient::rebuildCollections() {
@@ -434,7 +659,7 @@ void ServerClient::rebuildCollections() {
     for (const QString &genre : order) {
         collections << QVariantMap{{"id", QStringLiteral("genre:") + genre},
                                    {"title", genre},
-                                   {"subtitle", QStringLiteral("Genre")},
+                                   {"subtitle", tr("Genre")},
                                    {"items", byGenre.value(genre)}};
     }
     m_collections = collections;
@@ -540,7 +765,7 @@ void ServerClient::buildHome(const QJsonArray &recent, const QJsonArray &cont) {
     emit homeChanged();
 }
 
-// ------------------------------------------------------------------ detalhe/play
+// --------------------------------------------------------------- detail/playback
 
 QJsonObject ServerClient::rawItem(const QString &id) const {
     return m_rawById.value(id);
@@ -650,7 +875,7 @@ void ServerClient::requestPlayback(const QString &id) {
                         || plan.value("mode").toString() != QLatin1String("direct")) {
                         const QString reason = plan.value("reason").toString();
                         m_playbackError = reason.isEmpty()
-                                              ? QStringLiteral("Item indisponível para reprodução direta.")
+                                              ? tr("Item is not available for direct playback.")
                                               : reason;
                         emit playbackErrorChanged();
                         emit playbackFailed(m_playbackError);
@@ -717,7 +942,7 @@ void ServerClient::enrichItem(const QString &id, const QString &provider) {
                     m_enrichStatus = QStringLiteral("idle");
                     emit enrichStatusChanged();
                     if (!ok) {
-                        setError(status == 403 ? QStringLiteral("Apenas administradores podem enriquecer.")
+                        setError(status == 403 ? tr("Only administrators can enrich metadata.")
                                                : err);
                         return;
                     }
@@ -735,7 +960,7 @@ void ServerClient::removeEnrichment(const QString &id) {
                     m_enrichStatus = QStringLiteral("idle");
                     emit enrichStatusChanged();
                     if (!ok) {
-                        setError(status == 403 ? QStringLiteral("Apenas administradores podem remover.")
+                        setError(status == 403 ? tr("Only administrators can remove metadata.")
                                                : err);
                         return;
                     }
@@ -751,8 +976,8 @@ void ServerClient::applyEnrichment(const QString &id, const QJsonObject &overlay
     rebuildItemViews(id);
 }
 
-// Re-normaliza cards e detalhe depois de uma mudança de overlay, sem
-// refetch: o enrichment recém-baixado já está no cache.
+// Re-normalize cards and detail after an overlay change. The newly fetched
+// enrichment is already cached, so no extra fetch is required.
 void ServerClient::rebuildItemViews(const QString &id) {
     rebuildCatalog();
     if (!m_currentMedia.isEmpty() && m_currentMedia.value("id").toString() == id)
@@ -761,7 +986,181 @@ void ServerClient::rebuildItemViews(const QString &id) {
         loadHome();
 }
 
-// ---------------------------------------------------------------------- busca
+// ------------------------------------------------------- administration (admin)
+
+// User and library mutations report through adminStatus; failures also land
+// in errorMessage so offline/timeout states stay visible in one place.
+void ServerClient::loadUsers() {
+    if (!ready())
+        return;
+    const quint64 gen = m_generation;
+    requestJson("GET", QStringLiteral("/api/users"), {}, {}, true,
+                [this, gen](bool ok, int, const QJsonDocument &doc, const QString &) {
+                    if (gen != m_generation || !ok)
+                        return;
+                    m_users = doc.array().toVariantList();
+                    emit usersChanged();
+                });
+}
+
+void ServerClient::createUser(const QString &username, const QString &password, const QString &role) {
+    if (!ready())
+        return;
+    QJsonObject body{{"username", username}, {"password", password}, {"role", role}};
+    requestJson("POST", QStringLiteral("/api/users"), body, {}, true,
+                [this, username](bool ok, int, const QJsonDocument &, const QString &err) {
+                    if (!ok) {
+                        setError(err);
+                        return;
+                    }
+                    setAdminStatus(tr("User %1 created.").arg(username));
+                    loadUsers();
+                });
+}
+
+void ServerClient::setUserDisabled(const QString &id, bool disabled) {
+    if (!ready() || id.isEmpty())
+        return;
+    QJsonObject body{{"disabled", disabled}};
+    requestJson("PATCH", QStringLiteral("/api/users/%1").arg(encodeId(id)), body, {}, true,
+                [this, id, disabled](bool ok, int, const QJsonDocument &, const QString &err) {
+                    if (!ok) {
+                        setError(err);
+                        return;
+                    }
+                    setAdminStatus(disabled ? tr("User disabled.") : tr("User enabled."));
+                    Q_UNUSED(id);
+                    loadUsers();
+                });
+}
+
+void ServerClient::setUserRole(const QString &id, const QString &role) {
+    if (!ready() || id.isEmpty())
+        return;
+    QJsonObject body{{"role", role}};
+    requestJson("PATCH", QStringLiteral("/api/users/%1").arg(encodeId(id)), body, {}, true,
+                [this](bool ok, int, const QJsonDocument &, const QString &err) {
+                    if (!ok) {
+                        setError(err);
+                        return;
+                    }
+                    setAdminStatus(tr("User role updated."));
+                    loadUsers();
+                });
+}
+
+void ServerClient::resetUserPassword(const QString &id, const QString &password) {
+    if (!ready() || id.isEmpty())
+        return;
+    QJsonObject body{{"password", password}};
+    requestJson("PATCH", QStringLiteral("/api/users/%1").arg(encodeId(id)), body, {}, true,
+                [this](bool ok, int, const QJsonDocument &, const QString &err) {
+                    if (!ok) {
+                        setError(err);
+                        return;
+                    }
+                    setAdminStatus(tr("Password reset."));
+                });
+}
+
+void ServerClient::createLibrary(const QString &name, const QString &type, const QString &path) {
+    if (!ready())
+        return;
+    QJsonObject body{{"name", name}, {"type", type}, {"path", path}};
+    requestJson("POST", QStringLiteral("/api/libraries"), body, {}, true,
+                [this, name](bool ok, int, const QJsonDocument &, const QString &err) {
+                    if (!ok) {
+                        setError(err);
+                        return;
+                    }
+                    setAdminStatus(tr("Library %1 created.").arg(name));
+                    loadLibraries();
+                });
+}
+
+void ServerClient::deleteLibrary(const QString &id) {
+    if (!ready() || id.isEmpty())
+        return;
+    requestJson("DELETE", QStringLiteral("/api/libraries/%1").arg(encodeId(id)), {}, {}, true,
+                [this](bool ok, int, const QJsonDocument &, const QString &err) {
+                    if (!ok) {
+                        setError(err);
+                        return;
+                    }
+                    setAdminStatus(tr("Library deleted."));
+                    loadLibraries();
+                });
+}
+
+void ServerClient::triggerScan() {
+    if (!ready())
+        return;
+    const quint64 gen = m_generation;
+    requestJson("POST", QStringLiteral("/api/library/scan"), {}, {}, true,
+                [this, gen](bool ok, int status, const QJsonDocument &, const QString &err) {
+                    if (!ok && status != 409) {
+                        setError(err);
+                        return;
+                    }
+                    setAdminStatus(tr("Scan running…"));
+                    QTimer::singleShot(2000, this, [this, gen] {
+                        if (gen == m_generation)
+                            refreshScanStatus();
+                    });
+                });
+}
+
+void ServerClient::refreshScanStatus() {
+    if (!ready())
+        return;
+    const quint64 gen = m_generation;
+    requestJson("GET", QStringLiteral("/api/library/scan"), {}, {}, true,
+                [this, gen](bool ok, int, const QJsonDocument &doc, const QString &) {
+                    if (gen != m_generation || !ok)
+                        return;
+                    m_scan = doc.object().toVariantMap();
+                    emit scanChanged();
+                    const QString state = m_scan.value("state").toString();
+                    if (state == QLatin1String("running")) {
+                        setAdminStatus(tr("Scan running…"));
+                        QTimer::singleShot(2000, this, [this, gen] {
+                            if (gen == m_generation)
+                                refreshScanStatus();
+                        });
+                    } else if (state == QLatin1String("done")) {
+                        setAdminStatus(tr("Scan finished."));
+                        loadLibraries();
+                        loadHome();
+                    } else if (state == QLatin1String("error")) {
+                        setAdminStatus(tr("Scan failed: %1").arg(m_scan.value("error").toString()));
+                    }
+                });
+}
+
+void ServerClient::downloadBackup(const QString &filePath) {
+    if (!ready() || filePath.isEmpty() || m_token.isEmpty())
+        return;
+    QUrl url = apiUrl(QStringLiteral("/api/admin/backup"));
+    QNetworkRequest req(url);
+    req.setRawHeader("Authorization", ("Bearer " + m_token).toUtf8());
+    QNetworkReply *reply = m_net->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, filePath] {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            setError(tr("Backup failed."));
+            return;
+        }
+        QFile out(filePath);
+        if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            setError(tr("Could not write backup file."));
+            return;
+        }
+        out.write(reply->readAll());
+        setAdminStatus(tr("Backup saved to %1.").arg(filePath));
+    });
+}
+
+// ---------------------------------------------------------------------- search
 
 void ServerClient::search(const QString &query) {
     const QString trimmed = query.trimmed();
@@ -831,7 +1230,7 @@ void ServerClient::issueSearch(const QString &query) {
                 });
 }
 
-// ------------------------------------------------------------------ normalização
+// --------------------------------------------------------------- normalization
 
 QVariantMap ServerClient::normalize(const QJsonObject &item) const {
     const QString id = item.value("id").toString();

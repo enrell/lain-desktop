@@ -136,6 +136,15 @@ QJsonArray libraries() {
     };
 }
 
+QJsonArray users() {
+    return QJsonArray{
+        QJsonObject{{"id", "user-admin"}, {"username", "admin"}, {"role", "admin"},
+                    {"disabled", false}, {"pwd_ver", 1}, {"created_at", 1}},
+        QJsonObject{{"id", "user-guest"}, {"username", "guest"}, {"role", "user"},
+                    {"disabled", false}, {"pwd_ver", 1}, {"created_at", 2}},
+    };
+}
+
 } // namespace
 
 StubServer::StubServer(QObject *parent) : QObject(parent) {
@@ -227,6 +236,12 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
         return json(200, QJsonObject{{"setup_required", setupRequired}});
     }
 
+    if (method == QLatin1String("GET")
+        && (path == QLatin1String("/health") || path == QLatin1String("/api/health"))) {
+        status = 200;
+        return json(200, QJsonObject{{"status", "ok"}, {"version", "test-1.0"}});
+    }
+
     if (method == QLatin1String("POST") && path == QLatin1String("/api/setup")) {
         const QJsonObject in = QJsonDocument::fromJson(body).object();
         status = 201;
@@ -249,7 +264,7 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
         return json(200, QJsonObject{{"token", token}});
     }
 
-    // Tudo abaixo exige Bearer válido.
+    // Every route below requires a valid bearer token.
     if (!authorized()) {
         status = 401;
         return json(401, QJsonObject{{"error", "unauthorized"}}, "Unauthorized");
@@ -265,6 +280,57 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
     if (method == QLatin1String("GET") && path == QLatin1String("/api/libraries")) {
         status = 200;
         return json(200, libraries());
+    }
+
+    if (method == QLatin1String("POST") && path == QLatin1String("/api/libraries")) {
+        const QJsonObject in = QJsonDocument::fromJson(body).object();
+        status = 201;
+        return json(201, QJsonObject{{"id", "lib-new"}, {"name", in.value("name").toString()},
+                                     {"type", in.value("type").toString()},
+                                     {"path", in.value("path").toString()},
+                                     {"source", "stub"}, {"created_at", 3}},
+                    "Created");
+    }
+
+    if (method == QLatin1String("DELETE") && path.startsWith(QLatin1String("/api/libraries/"))) {
+        status = 200;
+        return json(200, QJsonObject{{"status", "ok"}});
+    }
+
+    if (method == QLatin1String("POST") && path == QLatin1String("/api/library/scan")) {
+        status = 202;
+        return json(202, QJsonObject{{"state", "running"}}, "Accepted");
+    }
+
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/library/scan")) {
+        status = 200;
+        return json(200, QJsonObject{{"state", "done"}, {"started_at", 1}, {"finished_at", 2}});
+    }
+
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/users")) {
+        status = 200;
+        return json(200, users());
+    }
+
+    if (method == QLatin1String("POST") && path == QLatin1String("/api/users")) {
+        const QJsonObject in = QJsonDocument::fromJson(body).object();
+        status = 201;
+        return json(201, QJsonObject{{"id", "user-new"}, {"username", in.value("username").toString()},
+                                     {"role", "user"}, {"disabled", false},
+                                     {"pwd_ver", 1}, {"created_at", 3}},
+                    "Created");
+    }
+
+    if (method == QLatin1String("PATCH") && path.startsWith(QLatin1String("/api/users/"))) {
+        status = 200;
+        return json(200, QJsonObject{{"id", "user-guest"}, {"username", "guest"},
+                                     {"role", "user"}, {"disabled", false},
+                                     {"pwd_ver", 1}, {"created_at", 2}});
+    }
+
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/admin/backup")) {
+        status = 200;
+        return respond(200, QByteArray("test-backup-bytes"), "OK");
     }
 
     if (method == QLatin1String("GET") && path == QLatin1String("/api/catalog")) {
@@ -289,9 +355,10 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
             }
             items = filtered;
         }
-        const int limit = query.queryItemValue("limit").isEmpty()
+        const int requested = query.queryItemValue("limit").isEmpty()
                               ? 50
                               : query.queryItemValue("limit").toInt();
+        const int limit = paginateOneByOne ? qMin(requested, 1) : requested;
         const int offset = query.queryItemValue("offset").toInt();
         QJsonArray page;
         for (int i = offset; i < items.size() && page.size() < limit; ++i)
@@ -307,7 +374,7 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
         const QJsonArray metadataCaps{"lain.metadata.search@1", "lain.metadata.resolve@1"};
         status = 200;
         return json(200, QJsonObject{
-                             {"composition", QJsonArray{}},
+                             {"composition", QJsonObject{{"generation", 1}, {"bindings", QJsonArray{}}}},
                              {"providers", QJsonArray{"lain-metadata-anilist", "lain-metadata-nfo"}},
                              {"provider_info", QJsonArray{
                                  QJsonObject{{"id", "lain-metadata-anilist"}, {"capabilities", metadataCaps}, {"healthy", true}},

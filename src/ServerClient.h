@@ -16,17 +16,17 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QTimer;
 
-// Cliente HTTP real do servidor Lain (gateway Go).
+// HTTP client for the real Lain server (Go gateway).
 //
-// O QML consome propriedades com NOTIFY (home, movies, shows, collections,
-// currentMedia, searchResults) em vez dos antigos métodos mock síncronos.
-// A sessão (URL do servidor, token, usuário) é persistida via QSettings.
+// QML consumes NOTIFY-backed properties (home, movies, shows, collections,
+// currentMedia, and searchResults). The server URL and session are persisted
+// through QSettings.
 //
-// Fluxo de estados: offline -> setup | login -> ready.
-//   offline  não foi possível alcançar o servidor
-//   setup    primeiro acesso: criar conta admin (POST /api/setup)
-//   login    servidor ok, sem sessão válida (POST /api/auth/login)
-//   ready    sessão válida, dados carregados
+// State flow: offline -> setup | login -> ready.
+//   offline  the server could not be reached
+//   setup    first access: create the admin account (POST /api/setup)
+//   login    server reachable, but no valid session (POST /api/auth/login)
+//   ready    valid session and loaded data
 class ServerClient : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString serverUrl READ serverUrl WRITE setServerUrl NOTIFY serverUrlChanged)
@@ -50,6 +50,14 @@ class ServerClient : public QObject {
 
     Q_PROPERTY(QVariantList metadataProviders READ metadataProviders NOTIFY metadataProvidersChanged)
     Q_PROPERTY(QString enrichStatus READ enrichStatus NOTIFY enrichStatusChanged)
+    Q_PROPERTY(QVariantList users READ users NOTIFY usersChanged)
+    Q_PROPERTY(QVariantMap scanState READ scanState NOTIFY scanChanged)
+    Q_PROPERTY(QVariantList pluginInfo READ pluginInfo NOTIFY pluginsChanged)
+    Q_PROPERTY(QVariantMap composition READ composition NOTIFY pluginsChanged)
+    Q_PROPERTY(QString adminStatus READ adminStatus NOTIFY adminChanged)
+    Q_PROPERTY(QVariantList series READ series NOTIFY catalogChanged)
+    Q_PROPERTY(bool autoResume READ autoResume WRITE setAutoResume NOTIFY playbackSettingsChanged)
+    Q_PROPERTY(bool autoplayNext READ autoplayNext WRITE setAutoplayNext NOTIFY playbackSettingsChanged)
 
     Q_PROPERTY(QVariantMap currentMedia READ currentMedia NOTIFY currentMediaChanged)
     Q_PROPERTY(bool loadingItem READ loadingItem NOTIFY currentMediaChanged)
@@ -82,6 +90,17 @@ public:
     QVariantList metadataProviders() const { return m_metadataProviders; }
     QString enrichStatus() const { return m_enrichStatus; }
 
+    QVariantList users() const { return m_users; }
+    QVariantMap scanState() const { return m_scan; }
+    QVariantList pluginInfo() const { return m_pluginInfo; }
+    QVariantMap composition() const { return m_composition; }
+    QString adminStatus() const { return m_adminStatus; }
+    QVariantList series() const { return m_series; }
+    bool autoResume() const { return m_autoResume; }
+    void setAutoResume(bool resume);
+    bool autoplayNext() const { return m_autoplayNext; }
+    void setAutoplayNext(bool next);
+
     QVariantMap currentMedia() const { return m_currentMedia; }
     bool loadingItem() const { return m_loadingItem; }
     QString playbackError() const { return m_playbackError; }
@@ -104,6 +123,24 @@ public:
     Q_INVOKABLE void enrichItem(const QString &id, const QString &provider);
     Q_INVOKABLE void removeEnrichment(const QString &id);
 
+    // Server administration (admin role; destructive callers confirm in UI).
+    Q_INVOKABLE void loadUsers();
+    Q_INVOKABLE void createUser(const QString &username, const QString &password, const QString &role);
+    Q_INVOKABLE void setUserDisabled(const QString &id, bool disabled);
+    Q_INVOKABLE void setUserRole(const QString &id, const QString &role);
+    Q_INVOKABLE void resetUserPassword(const QString &id, const QString &password);
+    Q_INVOKABLE void createLibrary(const QString &name, const QString &type, const QString &path);
+    Q_INVOKABLE void deleteLibrary(const QString &id);
+    Q_INVOKABLE void triggerScan();
+    Q_INVOKABLE void refreshScanStatus();
+    Q_INVOKABLE void downloadBackup(const QString &filePath);
+
+    // Series navigation (DD-030) and playback defaults (DD-031).
+    Q_INVOKABLE QString seriesIdFor(const QString &id) const;
+    Q_INVOKABLE QString seriesAutoplayMode(const QString &seriesId) const; // default|on|off
+    Q_INVOKABLE void setSeriesAutoplay(const QString &seriesId, const QString &mode);
+    Q_INVOKABLE QString nextEpisodeId(const QString &id) const;
+
 signals:
     void serverUrlChanged();
     void stateChanged();
@@ -117,6 +154,11 @@ signals:
     void searchChanged();
     void metadataProvidersChanged();
     void enrichStatusChanged();
+    void usersChanged();
+    void scanChanged();
+    void pluginsChanged();
+    void adminChanged();
+    void playbackSettingsChanged();
     void currentMediaChanged();
     void playbackErrorChanged();
 
@@ -132,21 +174,24 @@ private:
     QUrl apiUrl(const QString &path, const QUrlQuery &query = {}) const;
     QString streamUrlFor(const QString &id) const;
 
-    // Estado / sessão
+    // State and session
     void setState(const QString &state);
     void setBusy(bool busy);
     void setError(const QString &message);
     void clearError();
+    void setAdminStatus(const QString &status);
     void setSession(const QString &token, const QString &username, const QString &role);
     void clearSession();
     void checkServer();
     void fetchMe();
     void loadAfterLogin();
 
-    // Dados
+    // Catalog data
     void loadLibraries();
     void loadCatalog();
+    void loadCatalogPage(int offset, const QJsonArray &accumulated);
     void rebuildCatalog();
+    void buildSeries();
     void loadEnrichments(const QStringList &ids, std::function<void()> done);
     void loadEnrichChunks(const QStringList &ids, int offset, std::function<void()> done);
     void loadHome();
@@ -161,9 +206,11 @@ private:
     QVariantList normalizeAll(const QJsonArray &items) const;
     void issueSearch(const QString &query);
 
-    // Helpers de apresentação
+    // Presentation helpers
     static QString humanSize(qint64 bytes);
     static QString humanDuration(double seconds);
+    static QString seriesKey(const QString &libraryId, const QString &seriesTitle);
+    static QString seriesTitleFor(const QVariantMap &card);
     static QString fileExtension(const QString &path);
     static QString accentFor(const QString &seed);
     static QString joinGenres(const QStringList &genres);
@@ -182,13 +229,13 @@ private:
     QString m_playbackError;
     bool m_busy = false;
 
-    QJsonArray m_raw;                          // catálogo carregado (ordenado)
-    QHash<QString, QJsonObject> m_rawById;     // id -> item cru
-    QHash<QString, QVariantMap> m_enrichment;  // id -> Enrichment
-    QSet<QString> m_enrichKnown;               // ids já consultados (mesmo sem overlay)
-    QHash<QString, QVariantMap> m_progress;    // id -> Progress
-    QHash<QString, QString> m_libraryNames;    // id -> nome
-    QHash<QString, QString> m_libraryTypes;    // id -> type
+    QJsonArray m_raw;                          // loaded, sorted catalog
+    QHash<QString, QJsonObject> m_rawById;     // id -> raw item
+    QHash<QString, QVariantMap> m_enrichment;  // id -> enrichment overlay
+    QSet<QString> m_enrichKnown;               // queried IDs, including misses
+    QHash<QString, QVariantMap> m_progress;    // id -> watch progress
+    QHash<QString, QString> m_libraryNames;    // id -> display name
+    QHash<QString, QString> m_libraryTypes;    // id -> library type
 
     QVariantMap m_home;
     QVariantList m_movies, m_shows, m_catalog, m_collections, m_libraries;
@@ -201,8 +248,19 @@ private:
     QVariantList m_metadataProviders;
     QString m_enrichStatus = QStringLiteral("idle");
 
+    QVariantList m_users;
+    QVariantMap m_scan;
+    QVariantList m_pluginInfo;
+    QVariantMap m_composition;
+    QString m_adminStatus;
+
+    QVariantList m_series;
+    bool m_autoResume = true;
+    bool m_autoplayNext = true;
+    QVariantMap m_seriesAutoplay; // series id -> default|on|off
+
     QVariantMap m_currentMedia;
     bool m_loadingItem = false;
 
-    quint64 m_generation = 0;  // invalida respostas de sessões anteriores
+    quint64 m_generation = 0;  // invalidates replies from previous sessions
 };

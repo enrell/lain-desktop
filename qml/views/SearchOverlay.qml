@@ -3,8 +3,7 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Busca funcional: input grande + resultados ao vivo do servidor
-// (GET /api/search com debounce no client C++).
+// Large search input with live server results and C++-side debounce.
 Rectangle {
     id: root
     anchors.fill: parent
@@ -40,7 +39,7 @@ Rectangle {
         radius: Tokens.radiusLg
         color: Tokens.bgElevated
         border.color: Tokens.borderSubtle
-        MouseArea { anchors.fill: parent } // consome cliques dentro do painel
+        MouseArea { anchors.fill: parent } // Consume clicks inside the panel.
 
         ColumnLayout {
             anchors.fill: parent
@@ -72,7 +71,7 @@ Rectangle {
                     Text {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
-                        text: "Buscar na biblioteca…"
+                        text: qsTr("Search your library…")
                         color: Tokens.textTertiary
                         font: searchInput.font
                         visible: searchInput.text === ""
@@ -82,9 +81,10 @@ Rectangle {
 
             Text {
                 text: root.query.trim() === ""
-                    ? "Sugestões"
-                    : server.searching ? "Buscando…"
-                    : root.resultCount + (root.resultCount === 1 ? " resultado" : " resultados")
+                    ? qsTr("Suggestions")
+                    : server.searching ? qsTr("Searching…")
+                    : root.resultCount === 1 ? qsTr("1 result")
+                    : qsTr("%1 results").arg(root.resultCount)
                 color: Tokens.textTertiary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.metaSize
@@ -106,7 +106,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 visible: root.query.trim() !== "" && !server.searching && root.resultCount === 0
-                text: "Nenhum resultado para '" + root.query.trim() + "'"
+                text: qsTr("No results for ‘%1’").arg(root.query.trim())
                 color: Tokens.textTertiary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.metaSize

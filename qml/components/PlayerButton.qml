@@ -1,7 +1,7 @@
 import QtQuick
 import Lain
 
-// Botão do player: glifo FA centralizado, pill no hover.
+// Player button with a centered glyph and hover pill.
 Rectangle {
     implicitWidth: 44
     implicitHeight: 40

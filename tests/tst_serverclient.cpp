@@ -1,13 +1,15 @@
 #include <QtTest>
+#include <QFile>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 
 #include "ServerClient.h"
 #include "stubserver.h"
 
-// Testes do cliente HTTP real (ServerClient) contra o stub do gateway,
-// sem display e sem rede externa. Roda sob ctest com offscreen.
+// Real ServerClient HTTP tests against the gateway stub,
+// without a display or external network. It runs offscreen through ctest.
 class TestServerClient : public QObject {
     Q_OBJECT
 private slots:
@@ -60,6 +62,20 @@ private slots:
         QCOMPARE(m_client->libraries().size(), 2);
     }
 
+    void paginatedCatalogLoadsAllItems() {
+        m_stub->paginateOneByOne = true;
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->movies().size(), 1);
+        QTRY_COMPARE(m_client->shows().size(), 2);
+        QTRY_COMPARE(m_client->catalog().size(), 3);
+        int catalogGets = 0;
+        for (const auto &req : m_stub->requests) {
+            if (req.first == QLatin1String("GET") && req.second == QLatin1String("/api/catalog"))
+                ++catalogGets;
+        }
+        QVERIFY(catalogGets >= 3);
+    }
+
     void normalizesEnrichmentAndProgress() {
         QVERIFY(startReadyClient());
         QTRY_COMPARE(m_client->shows().size(), 2);
@@ -75,10 +91,10 @@ private slots:
         QVERIFY(!movie.value("size_human").toString().isEmpty());
         QVERIFY(movie.value("tech").toMap().value("container").toString() == QLatin1String("MP4"));
         QVERIFY(movie.value("poster").toString().startsWith(QLatin1String("data:image/svg+xml")));
-        // accent é sempre uma cor determinística
+        // Accent is always deterministic.
         QVERIFY(movie.value("accent").toString().startsWith(QLatin1Char('#')));
 
-        // progresso do continue vira fração no card
+        // Continue-watching progress becomes the card fraction.
         QVariantMap show = findCard(m_client->shows(), QStringLiteral("show-1"));
         QCOMPARE(show.value("progress").toDouble(), 0.5);
         QCOMPARE(show.value("runtime").toString(), QStringLiteral("30s"));
@@ -89,7 +105,7 @@ private slots:
         QVERIFY(startReadyClient());
         QTRY_VERIFY(!m_client->home().isEmpty());
         QTRY_COMPARE(m_client->home().value("continueWatching").toList().size(), 1);
-        // hero prioriza o que está em continue watching
+        // The hero prioritizes continue-watching media.
         QCOMPARE(m_client->home().value("hero").toMap().value("id").toString(),
                  QStringLiteral("show-1"));
         QTRY_COMPARE(m_client->home().value("recentlyAdded").toList().size(), 3);
@@ -147,11 +163,10 @@ private slots:
         m_client->start();
         QTRY_COMPARE(m_client->state(), QStringLiteral("login"));
         QVERIFY(QSettings().value(QStringLiteral("auth/token")).toString().isEmpty());
-        QVERIFY(m_client->errorMessage().contains(QStringLiteral("Sessão")));
+        QVERIFY(m_client->errorMessage().contains(QStringLiteral("Session")));
     }
 
-    void loadsMetadataProvidersForAdmins() {
-        QVERIFY(startReadyClient());
+    void loadsMetadataProvidersForAdmins() {        QVERIFY(startReadyClient());
         QTRY_COMPARE(m_client->metadataProviders().size(), 2);
         const QVariantMap first = m_client->metadataProviders().first().toMap();
         QCOMPARE(first.value("id").toString(), QStringLiteral("lain-metadata-anilist"));
@@ -190,6 +205,79 @@ private slots:
         QVERIFY(url.contains(QStringLiteral("t=8.0")));
         QVERIFY(url.contains(QStringLiteral("w=320")));
         QVERIFY(url.contains(QStringLiteral("token=test-token")));
+    }
+
+    void loadsUsersForAdmin() {
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->users().size(), 2);
+        QCOMPARE(m_client->users().first().toMap().value("username").toString(),
+                 QStringLiteral("admin"));
+    }
+
+    void createAndDisableUser() {
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->users().size(), 2);
+        m_client->createUser(QStringLiteral("bob"), QStringLiteral("pw123456"),
+                             QStringLiteral("user"));
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("created")));
+        m_client->setUserDisabled(QStringLiteral("user-guest"), true);
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("disabled")));
+        m_client->setUserDisabled(QStringLiteral("user-guest"), false);
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("enabled")));
+    }
+
+    void createAndDeleteLibrary() {
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->libraries().size(), 2);
+        m_client->createLibrary(QStringLiteral("Docs"), QStringLiteral("movie"),
+                                QStringLiteral("/tmp/docs"));
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("created")));
+        m_client->deleteLibrary(QStringLiteral("lib-new"));
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("deleted")));
+    }
+
+    void scanFinishesAndReloads() {
+        QVERIFY(startReadyClient());
+        m_client->triggerScan();
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("finished")));
+        QCOMPARE(m_client->scanState().value("state").toString(), QStringLiteral("done"));
+    }
+
+    void backupDownloadsBytes() {
+        QVERIFY(startReadyClient());
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("lain.db"));
+        m_client->downloadBackup(path);
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("saved")));
+        QFile out(path);
+        QVERIFY(out.open(QIODevice::ReadOnly));
+        QCOMPARE(out.readAll(), QByteArray("test-backup-bytes"));
+    }
+
+    void seriesGroupsUnnumberedEpisodesAsSpecials() {
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->shows().size(), 2);
+        QTRY_COMPARE(m_client->series().size(), 1);
+        const QVariantMap info = m_client->series().first().toMap();
+        QCOMPARE(info.value("specialsCount").toInt(), 2);
+        QVERIFY(!m_client->seriesIdFor(QStringLiteral("show-1")).isEmpty());
+        QVERIFY(m_client->nextEpisodeId(QStringLiteral("show-1")).isEmpty());
+    }
+
+    void playbackDefaultsPersist() {
+        QVERIFY(startReadyClient());
+        QVERIFY(m_client->autoResume());
+        QVERIFY(m_client->autoplayNext());
+        m_client->setAutoResume(false);
+        QVERIFY(!m_client->autoResume());
+        m_client->setAutoResume(true);
+        m_client->setSeriesAutoplay(QStringLiteral("series:test"), QStringLiteral("on"));
+        QCOMPARE(m_client->seriesAutoplayMode(QStringLiteral("series:test")),
+                 QStringLiteral("on"));
+        m_client->setSeriesAutoplay(QStringLiteral("series:test"), QStringLiteral("bogus"));
+        QCOMPARE(m_client->seriesAutoplayMode(QStringLiteral("series:test")),
+                 QStringLiteral("default"));
     }
 
 private:

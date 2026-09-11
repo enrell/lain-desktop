@@ -1,9 +1,8 @@
 pragma Singleton
 import QtQuick
 
-// Tokens derivados do tema Omarchy ao vivo (via `omarchy`).
-// Superfícies são compositing sobre themeBg: funcionam em temas
-// dark e light sem hardcode. Radius espelha decoration:rounding.
+// Tokens derived from the live Omarchy theme. Surfaces composite over themeBg
+// for light and dark palettes. Radius mirrors compositor rounding.
 QtObject {
     readonly property color themeBg: omarchy.background
     readonly property color themeFg: omarchy.foreground
@@ -20,7 +19,7 @@ QtObject {
     readonly property color track: Qt.tint(themeBg, Qt.alpha(themeFg, 0.14))
     readonly property color borderSubtle: Qt.alpha(themeFg, 0.09)
 
-    // Vocabulário de estados do shell (normal/hover/selected)
+    // Shell state vocabulary: normal, hover, and selected.
     readonly property color hoverFill: Qt.tint(themeBg, Qt.alpha(themeFg, 0.07))
     readonly property color selectedFill: Qt.tint(themeBg, Qt.alpha(themeFg, 0.14))
 
@@ -32,7 +31,7 @@ QtObject {
     readonly property int cardGap: 14
     readonly property int sectionGap: 48
 
-    // Fonte do tema (alias fontconfig: acompanha `omarchy font set`)
+    // Theme font through fontconfig, following `omarchy font set`.
     readonly property string fontFamily: "monospace"
 
     readonly property int heroSize: 68

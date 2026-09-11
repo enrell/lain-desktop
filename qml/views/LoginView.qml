@@ -3,8 +3,7 @@ import QtQuick.Layouts
 import Lain
 import "../theme/Color.js" as Color
 
-// Porta de entrada do app: conexão com o servidor, primeiro acesso (setup)
-// e login. Substitui o antigo mock quando não há sessão válida.
+// Entry point for server connection, first-access setup, and login.
 Item {
     id: root
 
@@ -24,7 +23,7 @@ Item {
         }
     }
 
-    // Wash sutil do accent sobre o fundo, alinhado ao Hero.
+    // Subtle accent wash over the background, aligned with Hero.
     Rectangle {
         anchors.fill: parent
         color: Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.04))
@@ -37,7 +36,7 @@ Item {
 
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: "lain"
+            text: "Lain"
             color: Tokens.themeAccent
             font.family: Tokens.fontFamily
             font.pixelSize: 46
@@ -47,9 +46,9 @@ Item {
         Text {
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: 6
-            text: root.failure ? "Sem conexão com o servidor"
-                : root.setupMode ? "Primeiro acesso — crie a conta de administrador"
-                                 : "Entre para acessar sua biblioteca"
+            text: root.failure ? qsTr("Could not connect to the server")
+                : root.setupMode ? qsTr("First access — create the administrator account")
+                                 : qsTr("Sign in to access your library")
             color: Tokens.textSecondary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.bodySize
@@ -60,7 +59,7 @@ Item {
             objectName: "serverField"
             Layout.fillWidth: true
             Layout.topMargin: 34
-            label: "Servidor"
+            label: qsTr("Server")
             placeholder: "http://127.0.0.1:9360"
             text: server.serverUrl
             onAccepted: userField.forceActiveFocus()
@@ -72,7 +71,7 @@ Item {
             Layout.fillWidth: true
             Layout.topMargin: 12
             visible: !root.failure
-            label: "Usuário"
+            label: qsTr("Username")
             placeholder: "admin"
             onAccepted: passField.forceActiveFocus()
         }
@@ -83,7 +82,7 @@ Item {
             Layout.fillWidth: true
             Layout.topMargin: 12
             visible: !root.failure
-            label: "Senha"
+            label: qsTr("Password")
             placeholder: "••••••••"
             password: true
             onAccepted: root.submit()
@@ -110,9 +109,9 @@ Item {
             color: server.busy ? Qt.tint(Tokens.themeAccent, Qt.alpha(Tokens.bgPrimary, 0.5)) : Tokens.themeAccent
             Text {
                 anchors.centerIn: parent
-                text: server.busy ? "Conectando…"
-                    : root.failure ? "Tentar novamente"
-                    : root.setupMode ? "Criar conta" : "Entrar"
+                text: server.busy ? qsTr("Connecting…")
+                    : root.failure ? qsTr("Try again")
+                    : root.setupMode ? qsTr("Create account") : qsTr("Sign in")
                 color: "black"
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.bodySize
@@ -125,17 +124,23 @@ Item {
             }
         }
 
+        SetupWizard {
+            Layout.fillWidth: true
+            Layout.topMargin: 18
+            visible: root.failure
+        }
+
         Text {
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: 26
-            text: "Build " + buildTs
+            text: qsTr("Build %1").arg(buildTs)
             color: Tokens.textTertiary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize - 2
         }
     }
 
-    // Campo estilizado (sem QtQuick.Controls para manter o vocabulário visual).
+    // Styled field without QtQuick.Controls, preserving the visual language.
     component Field: Rectangle {
         id: field
         property alias text: input.text

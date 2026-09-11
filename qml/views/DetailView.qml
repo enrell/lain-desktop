@@ -3,8 +3,8 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Detail (§24): hero cinematográfico + relacionados + ficha técnica.
-// Seções sem dados (cast/extras no servidor v0.1) simplesmente não aparecem.
+// Cinematic detail page with related media and technical information.
+// Sections without data are not rendered.
 ColumnLayout {
     id: root
     property var media
@@ -20,7 +20,7 @@ ColumnLayout {
 
     readonly property var techRows: {
         var t = media && media.tech ? media.tech : ({});
-        var labels = { container: "Container", size: "Size", library: "Library", identifier: "Identifier" };
+        var labels = { container: qsTr("Container"), size: qsTr("Size"), library: qsTr("Library"), identifier: qsTr("Identifier") };
         var order = ["container", "size", "library", "identifier"];
         var rows = [];
         for (var i = 0; i < order.length; ++i) {
@@ -50,7 +50,7 @@ ColumnLayout {
         border.color: Tokens.borderSubtle
         Text {
             anchors.centerIn: parent
-            text: "‹  Back"
+            text: qsTr("‹  Back")
             color: Tokens.textPrimary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize
@@ -71,7 +71,7 @@ ColumnLayout {
             visible: cast.length > 0
             spacing: 12
             Text {
-                text: "Cast"
+                text: qsTr("Cast")
                 color: Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.sectionSize
@@ -91,7 +91,7 @@ ColumnLayout {
         MediaRow {
             Layout.fillWidth: true
             visible: related.length > 0
-            title: "More Like This"
+            title: qsTr("More Like This")
             rowHeight: Tokens.posterWidth * 1.5 + 52
             model: related
             delegate: PosterCard { media: modelData; onOpen: m => openMedia(m) }
@@ -100,7 +100,7 @@ ColumnLayout {
         MediaRow {
             Layout.fillWidth: true
             visible: extras.length > 0
-            title: "Extras"
+            title: qsTr("Extras")
             rowHeight: Tokens.landscapeWidth * 9 / 16 + 34
             model: extras
             delegate: LandscapeCard { media: modelData; onOpen: m => openMedia(m) }
@@ -111,7 +111,7 @@ ColumnLayout {
             visible: techRows.length > 0
             spacing: 12
             Text {
-                text: "Media Info"
+                text: qsTr("Media Info")
                 color: Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.sectionSize
@@ -154,7 +154,7 @@ ColumnLayout {
             }
         }
 
-        // Enrichment (admin): provider, enriquecer/atualizar, remover.
+        // Administrator enrichment controls.
         ColumnLayout {
             id: metadataSection
             objectName: "metadataSection"
@@ -162,7 +162,7 @@ ColumnLayout {
             visible: server.ready && server.role === "admin"
             spacing: 12
             Text {
-                text: "Metadata"
+                text: qsTr("Metadata")
                 color: Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.sectionSize
@@ -184,10 +184,11 @@ ColumnLayout {
                         text: {
                             if (media && media.enriched) {
                                 var by = media.enrichProviderLabel ? media.enrichProviderLabel : media.enrichProvider;
-                                var extra = media.indexedTitle ? "  ·  indexado como \"" + media.indexedTitle + "\"" : "";
-                                return "Overlay de " + by + extra;
+                                if (media.indexedTitle)
+                                    return qsTr("Overlay from %1 · indexed as “%2”").arg(by).arg(media.indexedTitle);
+                                return qsTr("Overlay from %1").arg(by);
                             }
-                            return "Sem metadados enriquecidos para este item.";
+                            return qsTr("This item has no enriched metadata.");
                         }
                         color: Tokens.textSecondary
                         font.family: Tokens.fontFamily
@@ -198,7 +199,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
                         Repeater {
-                            model: [{ id: "", name: "Auto" }].concat(server.metadataProviders)
+                            model: [{ id: "", name: qsTr("Auto") }].concat(server.metadataProviders)
                             delegate: Rectangle {
                                 Layout.preferredHeight: 30
                                 Layout.preferredWidth: providerText.implicitWidth + 24
@@ -236,7 +237,7 @@ ColumnLayout {
                             opacity: server.enrichStatus === "running" ? 0.6 : 1
                             Text {
                                 anchors.centerIn: parent
-                                text: media && media.enriched ? "Atualizar metadados" : "Enriquecer"
+                                text: media && media.enriched ? qsTr("Refresh metadata") : qsTr("Enrich")
                                 color: "black"
                                 font.family: Tokens.fontFamily
                                 font.pixelSize: Tokens.metaSize
@@ -257,7 +258,7 @@ ColumnLayout {
                             color: Tokens.surface2
                             Text {
                                 anchors.centerIn: parent
-                                text: "Remover"
+                                text: qsTr("Remove")
                                 color: Tokens.textPrimary
                                 font.family: Tokens.fontFamily
                                 font.pixelSize: Tokens.metaSize
@@ -270,7 +271,7 @@ ColumnLayout {
                         }
                         Text {
                             visible: server.enrichStatus === "running"
-                            text: "Buscando metadados…"
+                            text: qsTr("Fetching metadata…")
                             color: Tokens.textTertiary
                             font.family: Tokens.fontFamily
                             font.pixelSize: Tokens.metaSize

@@ -2,7 +2,7 @@ import QtQuick
 import QtTest
 import Lain
 
-// LoginView contra o ServerClient real + stub HTTP, tudo offscreen.
+// LoginView against the real ServerClient plus HTTP stub, all offscreen.
 TestCase {
     id: testCase
     name: "LoginView"

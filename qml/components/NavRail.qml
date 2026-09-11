@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import Lain
 
-// Rail nativa desktop: 64px colapsada, expande por CLIQUE no menu (☰).
-// Hover nunca muda geometria — só realça o item sob o cursor.
+// Native desktop rail: 64 px collapsed and expanded by clicking the menu.
+// Hover changes emphasis without changing geometry.
 Rectangle {
     id: rail
     width: expanded ? 210 : Tokens.navRailWidth
@@ -25,10 +25,10 @@ Rectangle {
 
         Repeater {
             model: [
-                { route: "home", icon: "\uf015", label: "Home" },
-                { route: "movies", icon: "\uf008", label: "Movies" },
-                { route: "shows", icon: "\uf26c", label: "Shows" },
-                { route: "collections", icon: "\uf009", label: "Collections" }
+                { route: "home", icon: "\uf015", label: qsTr("Home") },
+                { route: "movies", icon: "\uf008", label: qsTr("Movies") },
+                { route: "shows", icon: "\uf26c", label: qsTr("Shows") },
+                { route: "collections", icon: "\uf009", label: qsTr("Collections") }
             ]
             delegate: railItem
         }
@@ -45,7 +45,7 @@ Rectangle {
 
         Repeater {
             model: [
-                { route: "settings", icon: "\uf013", label: "Settings" }
+                { route: "settings", icon: "\uf013", label: qsTr("Settings") }
             ]
             delegate: railItem
         }

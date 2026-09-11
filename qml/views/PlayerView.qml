@@ -3,9 +3,8 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Player real sobre libmpv: timeline, volume, faixas, Anime4K, OSD.
-// A fonte vem de server.requestPlayback() (plano direct-play) e o
-// progresso é gravado em janelas de 10s + pausa/seek/fim/saída.
+// libmpv player with timeline, volume, tracks, Anime4K, and OSD.
+// The source comes from the direct-play plan, and progress uses bounded writes.
 Item {
     id: playerRoot
     Layout.fillWidth: true
@@ -36,7 +35,7 @@ Item {
         var s = t.lang ? t.lang : "";
         if (t.title)
             s = s ? s + " · " + t.title : t.title;
-        return s === "" ? "Track " + t.id : s;
+        return s === "" ? qsTr("Track %1").arg(t.id) : s;
     }
     function wake() {
         controlsVisible = true;
@@ -52,13 +51,13 @@ Item {
         wake();
     }
     function seekBy(d) { mpv.seekBy(d); wake(); }
-    function adjustVolume(d) { mpv.setVolume(mpv.volume + d); osd("Volume " + Math.round(mpv.volume + d)); wake(); }
+    function adjustVolume(d) { mpv.setVolume(mpv.volume + d); osd(qsTr("Volume %1").arg(Math.round(mpv.volume + d))); wake(); }
     function toggleMute() { mpv.setMuted(!mpv.muted); wake(); }
-    function cycleAudio() { mpv.cycleAudio(); osd("Audio"); wake(); }
-    function cycleSubtitle() { mpv.cycleSubtitle(); osd("Legenda"); wake(); }
+    function cycleAudio() { mpv.cycleAudio(); osd(qsTr("Audio")); wake(); }
+    function cycleSubtitle() { mpv.cycleSubtitle(); osd(qsTr("Subtitles")); wake(); }
     function cycleShader() { mpv.cycleShaderPreset(); osd(mpv.shaderInfo); wake(); }
 
-    // Grava progresso só quando há posição significativa; completed no fim.
+    // Report only meaningful positions; completion is reported at EOF.
     function report(completed) {
         if (!media || !media.id || !hasStream || mpv.duration <= 0)
             return;
@@ -88,10 +87,11 @@ Item {
             playerRoot.playError = "";
             playerRoot.hasStream = true;
             mpv.play(url);
-            if (positionSec > 5 && (durationSec <= 0 || positionSec < durationSec - 5)) {
+            // DD-031: auto-resume is a user default, not forced behavior.
+            if (server.autoResume && positionSec > 5 && (durationSec <= 0 || positionSec < durationSec - 5)) {
                 playerRoot.pendingResume = positionSec;
                 playerRoot.resumePending = true;
-                playerRoot.osd("Retomando…");
+                playerRoot.osd(qsTr("Resuming…"));
             } else {
                 playerRoot.resumePending = false;
                 playerRoot.pendingResume = 0;
@@ -105,7 +105,7 @@ Item {
     }
     Connections {
         target: mpv
-        // A duração chega depois do loadfile; é o ponto seguro p/ seek.
+        // Duration arrives after loadfile and marks the safe resume point.
         function onDurationChanged() {
             if (playerRoot.resumePending && mpv.duration > 0) {
                 mpv.seek(playerRoot.pendingResume);
@@ -114,8 +114,18 @@ Item {
             }
         }
         function onEndFile(eof) {
-            if (eof && playerRoot.media && playerRoot.media.id && mpv.duration > 0)
+            if (eof && playerRoot.media && playerRoot.media.id && mpv.duration > 0) {
                 server.reportProgress(playerRoot.media.id, mpv.duration, mpv.duration, true);
+                // DD-031: autoplay the next episode when enabled (global
+                // default plus per-series override, both resolved server-side).
+                var next = server.nextEpisodeId(playerRoot.media.id);
+                if (next !== "") {
+                    playerRoot.osd(qsTr("Playing next episode…"));
+                    server.openMedia(next);
+                    server.requestPlayback(next);
+                    return;
+                }
+            }
             playerRoot.controlsVisible = true;
         }
     }
@@ -135,7 +145,7 @@ Item {
             wake();
     }
 
-    // Wake em qualquer movimento; clique no vídeo pausa
+    // Any movement wakes controls; clicking the video toggles pause.
     MouseArea {
         anchors.fill: parent
         z: 1
@@ -180,7 +190,7 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 200 } }
     }
 
-    // Sem fonte: carregando, erro do plano ou test pattern
+    // No source: loading, plan error, or diagnostic test pattern.
     Rectangle {
         anchors.fill: parent
         z: 4
@@ -194,7 +204,7 @@ Item {
                 text: playerRoot.media
                     ? (playerRoot.media.displayTitle && playerRoot.media.displayTitle !== ""
                         ? playerRoot.media.displayTitle : playerRoot.media.title)
-                    : "Player"
+                    : qsTr("Player")
                 color: Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.sectionSize
@@ -203,7 +213,7 @@ Item {
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 visible: playerRoot.playError === ""
-                text: "Preparando reprodução…"
+                text: qsTr("Preparing playback…")
                 color: Tokens.textTertiary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.metaSize
@@ -228,7 +238,7 @@ Item {
                 color: Tokens.themeAccent
                 Text {
                     anchors.centerIn: parent
-                    text: "Tentar novamente"
+                    text: qsTr("Try again")
                     color: "black"
                     font.family: Tokens.fontFamily
                     font.bold: true
@@ -250,7 +260,7 @@ Item {
                 color: Tokens.surface2
                 Text {
                     anchors.centerIn: parent
-                    text: "Test pattern"
+                    text: qsTr("Test pattern")
                     color: Tokens.textPrimary
                     font.family: Tokens.fontFamily
                     font.bold: true
@@ -299,7 +309,7 @@ Item {
                 text: playerRoot.media
                     ? (playerRoot.media.displayTitle && playerRoot.media.displayTitle !== ""
                         ? playerRoot.media.displayTitle : playerRoot.media.title)
-                    : "Test Pattern"
+                    : qsTr("Test Pattern")
                 color: Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: 16
@@ -389,7 +399,7 @@ Item {
         }
     }
 
-    // Popup de faixas de áudio
+    // Audio-track popup.
     Rectangle {
         id: audioPopup
         visible: false
@@ -408,7 +418,7 @@ Item {
             anchors.fill: parent
             anchors.margins: 14
             spacing: 4
-            Text { text: "Audio"; color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
+            Text { text: qsTr("Audio"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
             Repeater {
                 model: mpv.audioTracks
                 delegate: Text {
@@ -427,7 +437,7 @@ Item {
         }
     }
 
-    // Popup de legendas
+    // Subtitle-track popup.
     Rectangle {
         id: subPopup
         visible: false
@@ -446,10 +456,10 @@ Item {
             anchors.fill: parent
             anchors.margins: 14
             spacing: 4
-            Text { text: "Subtitles"; color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
+            Text { text: qsTr("Subtitles"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
             Text {
                 width: subList.width
-                text: (mpv.subtitleId < 0 ? "● " : "○ ") + "Off"
+                text: (mpv.subtitleId < 0 ? "● " : "○ ") + qsTr("Off")
                 color: mpv.subtitleId < 0 ? Tokens.themeAccent : Tokens.textPrimary
                 font.family: Tokens.fontFamily
                 font.pixelSize: Tokens.metaSize

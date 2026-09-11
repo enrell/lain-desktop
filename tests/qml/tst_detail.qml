@@ -2,8 +2,8 @@ import QtQuick
 import QtTest
 import Lain
 
-// Detail: a seção de metadata aparece para admin, lista providers do
-// servidor e oferece enrich/remover conforme o overlay existir.
+// Detail shows the admin metadata section, lists server providers,
+// and offers enrich/remove actions when an overlay exists.
 TestCase {
     id: testCase
     name: "DetailView"
@@ -41,6 +41,7 @@ TestCase {
         ensureReady();
         server.openMedia("show-1");
         tryVerify(() => server.currentMedia.id === "show-1");
+        tryVerify(() => server.currentMedia.enriched);
 
         const view = createTemporaryObject(detailComponent, host, { media: server.currentMedia });
         verify(view);
@@ -50,9 +51,9 @@ TestCase {
         const remove = findChild(view, "removeEnrichButton");
         verify(section && enrich && remove);
         verify(section.visible);
-        verify(remove.visible); // show-1 tem overlay no stub
+        tryVerify(() => remove.visible); // The stub provides an overlay for show-1.
 
-        // providers vêm de /api/plugins: NFO + AniList (+ Auto local)
+        // Providers come from /api/plugins: NFO plus AniList (plus local Auto).
         tryVerify(() => server.metadataProviders.length === 2);
     }
 }

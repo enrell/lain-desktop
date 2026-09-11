@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Home: hero full-bleed + rows alinhadas ao gutter único.
+// Home uses a full-bleed hero and rows aligned to one content gutter.
 ColumnLayout {
     property var home
     signal openMedia(var media)
@@ -18,7 +18,7 @@ ColumnLayout {
 
     PageHeader {
         Layout.topMargin: 8
-        eyebrow: "HOME"
+        eyebrow: qsTr("HOME")
         onSearchRequested: t => searchRequested(t)
         onOpenMedia: m => openMedia(m)
         onAccount: account()
@@ -35,7 +35,7 @@ ColumnLayout {
         Layout.rightMargin: Tokens.pageMargin
         visible: continueRow.length > 0
         objectName: "continueRow"
-        title: "Continue Watching"
+        title: qsTr("Continue Watching")
         rowHeight: Tokens.landscapeWidth * 9 / 16 + 34
         model: continueRow
         delegate: LandscapeCard { media: modelData; onOpen: m => openMedia(m) }
@@ -47,7 +47,7 @@ ColumnLayout {
         Layout.bottomMargin: Tokens.sectionGap
         visible: recentRow.length > 0
         objectName: "recentRow"
-        title: "Recently Added"
+        title: qsTr("Recently Added")
         rowHeight: Tokens.posterWidth * 1.5 + 52
         model: recentRow
         delegate: PosterCard { media: modelData; onOpen: m => openMedia(m) }
@@ -60,7 +60,7 @@ ColumnLayout {
         visible: empty
         spacing: 8
         Text {
-            text: "Nada na biblioteca ainda"
+            text: qsTr("Your library is empty")
             color: Tokens.textSecondary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.sectionSize
@@ -68,7 +68,7 @@ ColumnLayout {
         }
         Text {
             Layout.maximumWidth: 560
-            text: "Crie uma biblioteca e rode um scan no servidor para que os títulos apareçam aqui."
+            text: qsTr("Create a library and scan it to make your media appear here.")
             color: Tokens.textTertiary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.bodySize

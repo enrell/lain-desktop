@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "../theme/Color.js" as Color
 import "../theme/Format.js" as Format
 
-// Poster 2:3. Normal: arte + título. Metadata só no hover/focus.
+// 2:3 poster with artwork and title; metadata appears on hover or focus.
 Rectangle {
     id: card
     width: Tokens.posterWidth
@@ -38,7 +38,7 @@ Rectangle {
             asynchronous: true
             visible: source !== ""
         }
-        // Marca d'água: inicial do título, textura em vez de caixa chapada
+        // Title-initial watermark used as a textured artwork fallback.
         Text {
             anchors.centerIn: parent
             visible: artImage.status !== Image.Ready

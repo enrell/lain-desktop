@@ -2,7 +2,7 @@ import QtQuick
 import QtTest
 import Lain
 
-// HomeView renderiza os dados reais normalizados (hero, continue, recentes).
+// HomeView renders normalized real data (hero, continue watching, recent).
 TestCase {
     id: testCase
     name: "HomeView"

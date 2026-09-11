@@ -71,6 +71,7 @@ private:
 };
 
 MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent) {
+    m_shaderInfo = tr("Anime4K off");
     m_mpv = mpv_create();
     if (!m_mpv)
         return;
@@ -98,7 +99,7 @@ MpvItem::~MpvItem() {
         mpv_wakeup(m_mpv);
     if (m_thread.joinable())
         m_thread.join();
-    // m_ctx é liberado pelo renderer (render thread).
+    // The renderer owns m_ctx and releases it on the render thread.
     if (m_mpv)
         mpv_terminate_destroy(m_mpv);
     m_mpv = nullptr;
@@ -262,7 +263,7 @@ void MpvItem::handleEvent(mpv_event *ev) {
         QMetaObject::invokeMethod(
             this,
             [this, failed, eof, err] {
-                m_errorText = failed ? QString("Playback error (%1)").arg(err)
+                m_errorText = failed ? tr("Playback error (%1)").arg(err)
                                      : QString();
                 emit errorTextChanged();
                 emit endFile(eof);
@@ -343,12 +344,12 @@ QString MpvItem::findShaderDir() {
     return {};
 }
 
-// Cadeias Anime4K como padrões ordenados; arquivos variam entre versões,
-// então casa por substring (case-insensitive) e aplica o que existir.
+// Anime4K chains are ordered patterns. File names differ between releases,
+// so match case-insensitive substrings and apply every available shader.
 void MpvItem::applyShaderPreset(const QString &name) {
     runCmd({"change-list", "glsl-shaders", "clr", ""});
     if (name == "off" || name.isEmpty()) {
-        m_shaderInfo = "Anime4K off";
+        m_shaderInfo = tr("Anime4K off");
         emit shaderChanged();
         return;
     }
@@ -364,7 +365,7 @@ void MpvItem::applyShaderPreset(const QString &name) {
     };
     const QString dir = findShaderDir();
     if (dir.isEmpty()) {
-        m_shaderInfo = "pasta ~/.config/lain/shaders ausente";
+        m_shaderInfo = tr("shader directory ~/.config/lain/shaders is missing");
         emit shaderChanged();
         return;
     }
@@ -383,11 +384,11 @@ void MpvItem::applyShaderPreset(const QString &name) {
         }
     }
     m_shaderInfo = applied > 0
-                       ? QString("Anime4K %1 · %2/%3 shaders")
+                       ? tr("Anime4K %1 · %2/%3 shaders")
                              .arg(name)
                              .arg(applied)
                              .arg(wanted)
-                       : "nenhum shader casou em " + dir;
+                       : tr("no matching shaders in %1").arg(dir);
     emit shaderChanged();
 }
 

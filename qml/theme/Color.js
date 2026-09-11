@@ -4,8 +4,8 @@ function _clamp(v) {
     return Math.max(0, Math.min(255, Math.round(v)));
 }
 
-// Escurece uma cor por um fator 0..1 (0 = preto, 1 = original).
-// Aceita string "#RRGGBB" ou valor color do QML.
+// Darken a color by a factor 0..1 (0 = black, 1 = original).
+// Accepts a "#RRGGBB" string or a QML color value.
 function shade(hex, f) {
     var s = String(hex);
     var h = s.charAt(0) === "#" ? s.substring(1) : s;

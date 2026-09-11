@@ -2,7 +2,7 @@ import QtQuick
 import QtTest
 import Lain
 
-// Busca assíncrona com debounce no cliente + estado do overlay.
+// Asynchronous debounced search in the client plus overlay state.
 TestCase {
     id: testCase
     name: "SearchOverlay"
@@ -46,7 +46,7 @@ TestCase {
         tryVerify(() => server.searchResults.length === 2);
         verify(!server.searching);
 
-        // o resultado carrega o overlay de enrichment (título/ano/gênero)
+        // The result carries the enrichment overlay (title/year/genre).
         const first = server.searchResults[0];
         compare(first.year, 2023);
         compare(first.genre, "Adventure");

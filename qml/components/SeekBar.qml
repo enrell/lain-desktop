@@ -1,7 +1,7 @@
 import QtQuick
 import Lain
 
-// Slider custom sem dependência de Controls: arrasto + knob no hover.
+// Custom slider without QtQuick.Controls: drag interaction and hover thumb.
 Rectangle {
     color: "transparent"
     height: 28

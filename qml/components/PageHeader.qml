@@ -4,8 +4,7 @@ import Lain
 import "../theme/Color.js" as Color
 import "../theme/Format.js" as Format
 
-// Header de página: eyebrow à esquerda, busca central com dropdown
-// ao vivo, avatar à direita.
+// Page header with an eyebrow, live-search dropdown, and account control.
 Rectangle {
     color: "transparent"
     Layout.preferredHeight: 68
@@ -97,7 +96,7 @@ Rectangle {
                         Text {
                             anchors.fill: parent
                             verticalAlignment: Text.AlignVCenter
-                            text: "Search library…"
+                            text: qsTr("Search library…")
                             color: Tokens.textTertiary
                             font: searchInput.font
                             visible: searchInput.text === ""
@@ -214,7 +213,7 @@ Rectangle {
                     Text {
                         width: dropCol.width
                         visible: matches.length === 0 && searchInput.text.trim() !== ""
-                        text: "Nenhum resultado para '" + searchInput.text.trim() + "'"
+                        text: qsTr("No results for ‘%1’").arg(searchInput.text.trim())
                         color: Tokens.textTertiary
                         font.family: Tokens.fontFamily
                         font.pixelSize: Tokens.metaSize
@@ -227,7 +226,7 @@ Rectangle {
                         visible: matches.length > 0
                         Text {
                             anchors.centerIn: parent
-                            text: "Ver todos no overlay  ⏎"
+                            text: qsTr("View all results  ⏎")
                             color: Tokens.themeAccent
                             font.family: Tokens.fontFamily
                             font.pixelSize: Tokens.metaSize

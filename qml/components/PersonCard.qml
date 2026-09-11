@@ -1,7 +1,7 @@
 import QtQuick
 import Lain
 
-// Pessoa: círculo + nome + papel. Sem foto: inicial sobre surface.
+// Person card with image, name, and role; initials provide the fallback.
 Rectangle {
     width: 96
     height: 138

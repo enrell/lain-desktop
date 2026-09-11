@@ -1,8 +1,8 @@
 import QtQuick
 import Lain
 
-// Row horizontal. Título e cards alinham ao gutter via Layout margins
-// aplicadas no uso (HomeView). Altura vinda de rowHeight — sem bandas mortas.
+// Horizontal row aligned by parent layout margins. rowHeight determines its
+// complete height without unused bands.
 Column {
     id: root
     property string title: ""

@@ -3,8 +3,7 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Collections: fileiras derivadas dos dados reais — uma por gênero do
-// enrichment (o servidor v0.1 não tem coleções manuais). Clique abre Detail.
+// Collection rows are currently derived from enrichment genres.
 ColumnLayout {
     property var collections: []
     signal openMedia(var media)
@@ -14,7 +13,7 @@ ColumnLayout {
 
     PageHeader {
         Layout.topMargin: 8
-        eyebrow: "COLLECTIONS"
+        eyebrow: qsTr("COLLECTIONS")
         onSearchRequested: t => searchRequested(t)
         onOpenMedia: m => openMedia(m)
         onAccount: account()
@@ -39,7 +38,7 @@ ColumnLayout {
         visible: (collections || []).length === 0
         spacing: 8
         Text {
-            text: "Sem coleções por enquanto"
+            text: qsTr("No collections yet")
             color: Tokens.textSecondary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.sectionSize
@@ -47,7 +46,7 @@ ColumnLayout {
         }
         Text {
             Layout.maximumWidth: 560
-            text: "As coleções são agrupadas por gênero assim que os itens tiverem metadados (enrichment)."
+            text: qsTr("Collections are grouped by genre after items receive metadata.")
             color: Tokens.textTertiary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.bodySize

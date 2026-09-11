@@ -3,7 +3,7 @@ import Lain
 import "../theme/Color.js" as Color
 import "../theme/Format.js" as Format
 
-// Landscape 16:9 p/ Continue Watching, com progress bar no accent da mídia.
+// 16:9 landscape card with a media-accent progress bar.
 Rectangle {
     id: card
     width: Tokens.landscapeWidth

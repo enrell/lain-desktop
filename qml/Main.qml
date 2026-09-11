@@ -9,7 +9,7 @@ Window {
     width: 1280
     height: 800
     visible: true
-    title: "lain"
+    title: "Lain"
     color: Tokens.bgPrimary
 
     property var homeData: server.home
@@ -17,8 +17,8 @@ Window {
     property string route: "home"
     property string returnRoute: "home"
 
-    // Conteúdo com margem fixa da rail colapsada; a rail flutua por cima
-    // (z) então expandir nunca desloca o layout — sem jitter de hitbox.
+    // Fixed content margin for the collapsed rail; the rail floats above
+    // (z), so expanding never shifts layout and avoids hitbox jitter.
     Flickable {
         id: page
         anchors.fill: parent
@@ -42,9 +42,12 @@ Window {
             LibraryView {
                 Layout.fillWidth: true
                 visible: root.route === "movies" || root.route === "shows"
-                title: root.route === "shows" ? "Shows" : "Movies"
+                title: root.route === "shows" ? qsTr("Shows") : qsTr("Movies")
                 items: root.route === "shows" ? server.shows : server.movies
+                seriesModel: server.series
+                showSeries: root.route === "shows"
                 onOpenMedia: m => { root.returnRoute = root.route; root.route = "detail"; server.openMedia(m.id); }
+                onPlayMedia: m => { root.returnRoute = root.route; server.openMedia(m.id); server.requestPlayback(m.id); root.route = "player"; }
                 onSearchRequested: t => searchOverlay.openWith(t)
                 onAccount: root.route = "settings"
             }
@@ -98,9 +101,9 @@ Window {
         onNavigate: r => { root.route = r; }
     }
 
-    // Tracking de hover por posição (não por eventos de borda): zona
-    // invisível que nunca intercepta cliques. Histerese 96/230 elimina
-    // flicker — botões da rail voltam a ser só botões.
+    // Position-based hover tracking (not edge events): an invisible zone
+    // that never intercepts clicks. Hysteresis 96/230 removes flicker
+    // so rail buttons stay simple buttons.
     MouseArea {
         anchors.fill: parent
         z: 5
@@ -113,7 +116,7 @@ Window {
         }
     }
 
-    // Busca funcional: Ctrl+F oficial, / como extra.
+    // Functional search: Ctrl+F is primary, / is a shortcut.
     SearchOverlay {
         id: searchOverlay
         visible: false
@@ -142,7 +145,7 @@ Window {
         }
     }
 
-    // Atalhos do player (§31)
+    // Player shortcuts (§31)
     Shortcut { enabled: root.route === "player"; sequence: "Space"; onActivated: playerView.togglePause() }
     Shortcut { enabled: root.route === "player"; sequence: "Left"; onActivated: playerView.seekBy(-10) }
     Shortcut { enabled: root.route === "player"; sequence: "Right"; onActivated: playerView.seekBy(10) }

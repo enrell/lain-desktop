@@ -1,10 +1,12 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Dialogs
 import Lain
 import "../components"
 
-// Settings: conexão/conta reais + bibliotecas do servidor + prova de que
-// o tema do Omarchy é ao vivo (swatches).
+// Dense single-scrolling administration (DD-027..DD-028, DD-031):
+// Connection, Libraries, Users, Plugins, Maintenance, Playback,
+// Language, Appearance, About. Destructive actions confirm first.
 ColumnLayout {
     id: root
     spacing: 16
@@ -14,30 +16,50 @@ ColumnLayout {
     signal loggedOut()
 
     readonly property var libraries: server.libraries || []
+    readonly property bool isAdmin: server.ready && server.role === "admin"
+    property var pendingConfirm: null
 
     function stateLabel() {
         switch (server.state) {
-        case "ready": return "Conectado";
-        case "login": return "Aguardando login";
-        case "setup": return "Primeiro acesso";
-        default: return "Offline";
+        case "ready": return qsTr("Connected");
+        case "login": return qsTr("Waiting for sign-in");
+        case "setup": return qsTr("First access");
+        default: return qsTr("Offline");
         }
     }
 
+    function askConfirm(action) {
+        pendingConfirm = action;
+        confirmDialog.open(action.message);
+    }
+
+    function scanLabel() {
+        var s = server.scanState || {};
+        var state = s.state || "idle";
+        if (state === "running")
+            return qsTr("Scan running…");
+        if (state === "done")
+            return qsTr("Scan finished.");
+        if (state === "error")
+            return qsTr("Scan failed: %1").arg(s.error || "");
+        return qsTr("Scan idle.");
+    }
+
     PageHeader {
-        eyebrow: "SYSTEM"
+        eyebrow: qsTr("SYSTEM")
         onSearchRequested: t => searchRequested(t)
         onAccount: account()
     }
     Text {
-        text: "Settings"
+        objectName: "settingsTitle"
+        text: qsTr("Settings")
         color: Tokens.textPrimary
         font.family: Tokens.fontFamily
         font.pixelSize: Tokens.pageTitleSize
         font.weight: Font.DemiBold
     }
 
-    // ------------------------------------------------------------- conexão
+    // ---------------------------------------------------------------- connection
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: connection.implicitHeight + 40
@@ -58,7 +80,7 @@ ColumnLayout {
                     color: server.ready ? Tokens.themeAccent : Tokens.themeUrgent
                 }
                 Text {
-                    text: "Servidor"
+                    text: qsTr("Server")
                     color: Tokens.textTertiary
                     font.family: Tokens.fontFamily
                     font.pixelSize: Tokens.metaSize
@@ -104,7 +126,7 @@ ColumnLayout {
                     color: Tokens.surface2
                     Text {
                         anchors.centerIn: parent
-                        text: "Reconectar"
+                        text: qsTr("Reconnect")
                         color: Tokens.textPrimary
                         font.family: Tokens.fontFamily
                         font.pixelSize: Tokens.metaSize
@@ -118,7 +140,7 @@ ColumnLayout {
                     color: Tokens.surface2
                     Text {
                         anchors.centerIn: parent
-                        text: "Sair"
+                        text: qsTr("Sign out")
                         color: Tokens.textPrimary
                         font.family: Tokens.fontFamily
                         font.pixelSize: Tokens.metaSize
@@ -132,12 +154,12 @@ ColumnLayout {
         }
     }
 
-    // ---------------------------------------------------------- bibliotecas
+    // ---------------------------------------------------------------- libraries
     ColumnLayout {
         Layout.fillWidth: true
         spacing: 10
         Text {
-            text: "Bibliotecas"
+            text: qsTr("Libraries")
             color: Tokens.textPrimary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.sectionSize
@@ -145,7 +167,7 @@ ColumnLayout {
         }
         Text {
             visible: root.libraries.length === 0
-            text: "Nenhuma biblioteca configurada no servidor."
+            text: qsTr("No libraries are configured on this server.")
             color: Tokens.textTertiary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize
@@ -186,15 +208,526 @@ ColumnLayout {
                         horizontalAlignment: Text.AlignRight
                         elide: Text.ElideMiddle
                     }
+                    Text {
+                        visible: root.isAdmin
+                        text: qsTr("Delete")
+                        color: Tokens.themeUrgent
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.askConfirm({
+                                kind: "deleteLibrary",
+                                id: modelData.id,
+                                message: qsTr("Delete library %1? Its items will leave the catalog.").arg(modelData.name)
+                            })
+                        }
+                    }
+                }
+            }
+        }
+        // Admin library creation (name, type, filesystem path).
+        property string newLibType: "movie"
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            visible: root.isAdmin
+            TextInput {
+                id: libName
+                Layout.fillWidth: true
+                Layout.preferredWidth: 160
+                color: Tokens.textPrimary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+                Text {
+                    anchors.fill: parent
+                    text: qsTr("Library name")
+                    color: Tokens.textTertiary
+                    font: libName.font
+                    visible: libName.text === ""
+                }
+            }
+            Text {
+                Layout.preferredWidth: 70
+                text: root.newLibType
+                color: Tokens.themeAccent
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.newLibType = root.newLibType === "movie" ? "series"
+                        : root.newLibType === "series" ? "anime" : "movie"
+                }
+            }
+            TextInput {
+                id: libPath
+                Layout.fillWidth: true
+                color: Tokens.textPrimary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+                Text {
+                    anchors.fill: parent
+                    text: qsTr("Filesystem path")
+                    color: Tokens.textTertiary
+                    font: libPath.font
+                    visible: libPath.text === ""
+                }
+            }
+            Rectangle {
+                Layout.preferredWidth: 130
+                Layout.preferredHeight: 32
+                radius: Tokens.radiusMd
+                color: Tokens.surface2
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Create library")
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        server.createLibrary(libName.text, root.newLibType, libPath.text);
+                        libName.text = "";
+                        libPath.text = "";
+                    }
                 }
             }
         }
     }
 
-    // ----------------------------------------------------------- aparência
+    // -------------------------------------------------------------------- users
+    ColumnLayout {
+        objectName: "usersSection"
+        Layout.fillWidth: true
+        spacing: 10
+        visible: root.isAdmin
+        Text {
+            text: qsTr("Users")
+            color: Tokens.textPrimary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.sectionSize
+            font.weight: Font.DemiBold
+        }
+        Repeater {
+            model: server.users || []
+            delegate: Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                radius: Tokens.radiusMd
+                color: Tokens.surface1
+                border.color: Tokens.borderSubtle
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    spacing: 12
+                    Text {
+                        Layout.preferredWidth: 160
+                        text: modelData.username
+                        color: modelData.disabled ? Tokens.textTertiary : Tokens.textPrimary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.bodySize
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: modelData.role
+                        color: Tokens.textTertiary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                    }
+                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: modelData.role === "admin" ? qsTr("Make user") : qsTr("Make admin")
+                        color: Tokens.themeAccent
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.askConfirm({
+                                kind: "setRole",
+                                id: modelData.id,
+                                extra: modelData.role === "admin" ? "user" : "admin",
+                                message: qsTr("Change role of %1 to %2?").arg(modelData.username).arg(modelData.role === "admin" ? "user" : "admin")
+                            })
+                        }
+                    }
+                    Text {
+                        text: modelData.disabled ? qsTr("Enable") : qsTr("Disable")
+                        color: modelData.disabled ? Tokens.themeAccent : Tokens.themeUrgent
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: modelData.disabled
+                                ? server.setUserDisabled(modelData.id, false)
+                                : root.askConfirm({
+                                    kind: "disableUser",
+                                    id: modelData.id,
+                                    message: qsTr("Disable user %1? They will not be able to sign in.").arg(modelData.username)
+                                })
+                        }
+                    }
+                }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            TextInput {
+                id: newUserName
+                Layout.preferredWidth: 150
+                color: Tokens.textPrimary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+                Text {
+                    anchors.fill: parent
+                    text: qsTr("Username")
+                    color: Tokens.textTertiary
+                    font: newUserName.font
+                    visible: newUserName.text === ""
+                }
+            }
+            TextInput {
+                id: newUserPass
+                Layout.preferredWidth: 150
+                echoMode: TextInput.Password
+                color: Tokens.textPrimary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+                Text {
+                    anchors.fill: parent
+                    text: qsTr("Password")
+                    color: Tokens.textTertiary
+                    font: newUserPass.font
+                    visible: newUserPass.text === ""
+                }
+            }
+            Rectangle {
+                Layout.preferredWidth: 120
+                Layout.preferredHeight: 32
+                radius: Tokens.radiusMd
+                color: Tokens.surface2
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Create user")
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        server.createUser(newUserName.text, newUserPass.text, "user");
+                        newUserName.text = "";
+                        newUserPass.text = "";
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ plugins
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 10
+        visible: root.isAdmin
+        Text {
+            text: qsTr("Plugins")
+            color: Tokens.textPrimary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.sectionSize
+            font.weight: Font.DemiBold
+        }
+        Text {
+            visible: (server.pluginInfo || []).length === 0
+            text: qsTr("No plugins reported.")
+            color: Tokens.textTertiary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize
+        }
+        Repeater {
+            model: server.pluginInfo || []
+            delegate: Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                radius: Tokens.radiusMd
+                color: Tokens.surface1
+                border.color: Tokens.borderSubtle
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    spacing: 12
+                    Rectangle {
+                        Layout.preferredWidth: 8
+                        Layout.preferredHeight: 8
+                        radius: 4
+                        color: modelData.healthy ? Tokens.themeAccent : Tokens.themeUrgent
+                    }
+                    Text {
+                        Layout.preferredWidth: 220
+                        text: modelData.id
+                        color: Tokens.textPrimary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: modelData.healthy ? qsTr("Healthy") : qsTr("Unhealthy")
+                        color: Tokens.textTertiary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                    }
+                }
+            }
+        }
+    }
+
+    // --------------------------------------------------------------- maintenance
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 10
+        visible: root.isAdmin
+        Text {
+            text: qsTr("Maintenance")
+            color: Tokens.textPrimary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.sectionSize
+            font.weight: Font.DemiBold
+        }
+        Text {
+            Layout.fillWidth: true
+            text: root.scanLabel()
+            color: Tokens.textSecondary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize
+        }
+        Text {
+            Layout.fillWidth: true
+            visible: server.adminStatus !== ""
+            text: server.adminStatus
+            color: Tokens.themeAccent
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize
+            wrapMode: Text.WordWrap
+        }
+        RowLayout {
+            spacing: 10
+            Rectangle {
+                Layout.preferredWidth: 130
+                Layout.preferredHeight: 34
+                radius: Tokens.radiusMd
+                color: Tokens.surface2
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Scan now")
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                }
+                MouseArea { anchors.fill: parent; onClicked: server.triggerScan() }
+            }
+            Rectangle {
+                Layout.preferredWidth: 150
+                Layout.preferredHeight: 34
+                radius: Tokens.radiusMd
+                color: Tokens.surface2
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Download backup")
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                }
+                MouseArea { anchors.fill: parent; onClicked: backupDialog.open() }
+            }
+        }
+    }
+
+    // ----------------------------------------------------------------- playback
+    ColumnLayout {
+        objectName: "playbackSection"
+        Layout.fillWidth: true
+        spacing: 10
+        Text {
+            text: qsTr("Playback")
+            color: Tokens.textPrimary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.sectionSize
+            font.weight: Font.DemiBold
+        }
+        RowLayout {
+            spacing: 8
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Resume playback automatically")
+                color: Tokens.textSecondary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+            }
+            Repeater {
+                model: [
+                    { id: true, label: qsTr("On") },
+                    { id: false, label: qsTr("Off") }
+                ]
+                delegate: Rectangle {
+                    Layout.preferredWidth: 60
+                    Layout.preferredHeight: 30
+                    radius: Tokens.radiusPill
+                    color: server.autoResume === modelData.id
+                        ? Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.16))
+                        : Tokens.surface1
+                    border.color: server.autoResume === modelData.id
+                        ? Qt.alpha(Tokens.themeAccent, 0.5) : Tokens.borderSubtle
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: server.autoResume === modelData.id ? Tokens.themeAccent : Tokens.textSecondary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: server.setAutoResume(modelData.id) }
+                }
+            }
+        }
+        RowLayout {
+            spacing: 8
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Autoplay next episode")
+                color: Tokens.textSecondary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+            }
+            Repeater {
+                model: [
+                    { id: true, label: qsTr("On") },
+                    { id: false, label: qsTr("Off") }
+                ]
+                delegate: Rectangle {
+                    Layout.preferredWidth: 60
+                    Layout.preferredHeight: 30
+                    radius: Tokens.radiusPill
+                    color: server.autoplayNext === modelData.id
+                        ? Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.16))
+                        : Tokens.surface1
+                    border.color: server.autoplayNext === modelData.id
+                        ? Qt.alpha(Tokens.themeAccent, 0.5) : Tokens.borderSubtle
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: server.autoplayNext === modelData.id ? Tokens.themeAccent : Tokens.textSecondary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: server.setAutoplayNext(modelData.id) }
+                }
+            }
+        }
+        Text {
+            visible: (server.series || []).length > 0
+            text: qsTr("Per-series autoplay")
+            color: Tokens.textSecondary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize
+        }
+        Repeater {
+            model: server.series || []
+            delegate: RowLayout {
+                property string seriesId: modelData.id
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    Layout.fillWidth: true
+                    text: modelData.title + " (" + modelData.episodeCount + ")"
+                    color: Tokens.textTertiary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                    elide: Text.ElideRight
+                }
+                Repeater {
+                    model: [
+                        { id: "default", label: qsTr("Default") },
+                        { id: "on", label: qsTr("On") },
+                        { id: "off", label: qsTr("Off") }
+                    ]
+                    delegate: Rectangle {
+                        Layout.preferredWidth: 70
+                        Layout.preferredHeight: 28
+                        radius: Tokens.radiusPill
+                        color: server.seriesAutoplayMode(seriesId) === modelData.id
+                            ? Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.16))
+                            : Tokens.surface1
+                        border.color: server.seriesAutoplayMode(seriesId) === modelData.id
+                            ? Qt.alpha(Tokens.themeAccent, 0.5) : Tokens.borderSubtle
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.label
+                            color: server.seriesAutoplayMode(seriesId) === modelData.id
+                                ? Tokens.themeAccent : Tokens.textSecondary
+                            font.family: Tokens.fontFamily
+                            font.pixelSize: Tokens.metaSize - 1
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: server.setSeriesAutoplay(seriesId, modelData.id)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- language
+    ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 10
+        Text {
+            text: qsTr("Language")
+            color: Tokens.textPrimary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.sectionSize
+            font.weight: Font.DemiBold
+        }
+        RowLayout {
+            spacing: 8
+            Repeater {
+                objectName: "languageRepeater"
+                model: localeManager.available
+                delegate: Rectangle {
+                    Layout.preferredHeight: 32
+                    Layout.preferredWidth: langLabel.implicitWidth + 28
+                    radius: Tokens.radiusPill
+                    color: localeManager.selected === modelData.id
+                        ? Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.16))
+                        : Tokens.surface1
+                    border.color: localeManager.selected === modelData.id
+                        ? Qt.alpha(Tokens.themeAccent, 0.5) : Tokens.borderSubtle
+                    Text {
+                        id: langLabel
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: localeManager.selected === modelData.id
+                            ? Tokens.themeAccent : Tokens.textSecondary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: localeManager.setSelected(modelData.id)
+                    }
+                }
+            }
+        }
+    }
+
+    // --------------------------------------------------------------- appearance
     Text {
         Layout.topMargin: 8
-        text: "Appearance follows the Omarchy theme — live, no restart."
+        text: qsTr("Appearance follows the Omarchy theme live, without restarting.")
         color: Tokens.textSecondary
         font.family: Tokens.fontFamily
         font.pixelSize: Tokens.bodySize
@@ -228,15 +761,62 @@ ColumnLayout {
         }
     }
     Text {
-        text: "Font: monospace  ·  Corners mirror Hyprland rounding (" + omarchy.cornerRadius + ")"
+        text: qsTr("Font: monospace · Corners mirror Hyprland rounding (%1)").arg(omarchy.cornerRadius)
         color: Tokens.textTertiary
         font.family: Tokens.fontFamily
         font.pixelSize: Tokens.metaSize
     }
-    Text {
-        text: "Build " + buildTs
-        color: Tokens.textTertiary
-        font.family: Tokens.fontFamily
-        font.pixelSize: Tokens.metaSize - 1
+    // --------------------------------------------------------------------- about
+    ColumnLayout {
+        Layout.fillWidth: true
+        Layout.topMargin: 8
+        spacing: 4
+        Text {
+            text: qsTr("About")
+            color: Tokens.textPrimary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.sectionSize
+            font.weight: Font.DemiBold
+        }
+        Text {
+            text: qsTr("Lain desktop %1").arg(appVersion)
+            color: Tokens.textSecondary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize
+        }
+        Text {
+            text: qsTr("Build %1").arg(buildTs)
+            color: Tokens.textTertiary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize - 1
+        }
+    }
+
+    FileDialog {
+        id: backupDialog
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "db"
+        nameFilters: ["Database (*.db)", "All files (*)"]
+        onAccepted: {
+            var path = String(backupDialog.selectedFile).replace(/^file:\/\//, "");
+            server.downloadBackup(path);
+        }
+    }
+
+    ConfirmDialog {
+        id: confirmDialog
+        onAccepted: {
+            var action = root.pendingConfirm;
+            root.pendingConfirm = null;
+            if (!action)
+                return;
+            if (action.kind === "deleteLibrary")
+                server.deleteLibrary(action.id);
+            else if (action.kind === "disableUser")
+                server.setUserDisabled(action.id, true);
+            else if (action.kind === "setRole")
+                server.setUserRole(action.id, action.extra);
+        }
+        onRejected: root.pendingConfirm = null
     }
 }

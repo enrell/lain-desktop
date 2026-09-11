@@ -10,8 +10,8 @@ extern "C" {
 #include <mpv/render_gl.h>
 }
 
-// Superfície de vídeo libmpv (Render API/OpenGL) + controle de playback.
-// Uma thread consome mpv_wait_event e publica estado via queued invokes.
+// libmpv video surface (Render API/OpenGL) and playback controls.
+// A worker thread consumes mpv_wait_event and publishes state via queued calls.
 class MpvItem : public QQuickFramebufferObject {
     Q_OBJECT
     QML_ELEMENT
@@ -99,6 +99,6 @@ private:
     int m_audioId = -1;
     int m_subtitleId = -1;
     QString m_shaderPreset = "off";
-    QString m_shaderInfo = "Anime4K off";
+    QString m_shaderInfo = QStringLiteral("Anime4K off");
     QString m_errorText;
 };

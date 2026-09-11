@@ -1,7 +1,6 @@
 .pragma library
 
-// Linhas de metadados tolerantes a dados ausentes: o servidor v0.1 não
-// fornece runtime/rating/diretor, então nada de separadores órfãos.
+// Metadata lines tolerate missing fields and never leave orphan separators.
 function parts(list) {
     var out = [];
     for (var i = 0; i < list.length; ++i) {

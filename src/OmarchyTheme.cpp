@@ -10,13 +10,13 @@ OmarchyTheme::OmarchyTheme(QObject *parent) : QObject(parent) {
     m_colorsPath = home + "/.local/state/omarchy/current/theme/colors.toml";
     load();
 
-    // Tema ativo pode ser reescrito ou trocado; observa arquivo + diretório.
+    // The active theme may be rewritten or replaced; watch file and directory.
     m_watcher.addPath(m_colorsPath);
     m_watcher.addPath(QFileInfo(m_colorsPath).absolutePath());
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, &OmarchyTheme::reload);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, &OmarchyTheme::reload);
 
-    // Espelha Hyprland decoration:rounding como o Style do shell faz.
+    // Mirror Hyprland decoration:rounding the way the shell style does.
     auto *proc = new QProcess(this);
     connect(proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, &OmarchyTheme::onRounded);
     proc->start("hyprctl", {"-j", "getoption", "decoration:rounding"});
@@ -47,9 +47,9 @@ void OmarchyTheme::onRounded(int exitCode) {
 void OmarchyTheme::load() {
     QFile f(m_colorsPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-        return; // Fora do Omarchy: mantém defaults.
+        return; // Outside Omarchy, retain the defaults.
 
-    // Mesma precedência do shell: chaves explícitas, depois color0/4/7/8.
+    // Match shell precedence: explicit keys, then color0/4/7/8.
     static const QRegularExpression kv("^\\s*([A-Za-z0-9_-]+)\\s*=\\s*[\"']?(#[0-9A-Fa-f]{6})");
     static const QRegularExpression mode("^\\s*mode\\s*=\\s*[\"']?(\\w+)");
     QString color0, color4, color7, color8;

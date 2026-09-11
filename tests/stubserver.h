@@ -11,9 +11,8 @@
 class QTcpSocket;
 class QUrlQuery;
 
-// Stub mínimo do gateway Lain para os testes: responde as rotas que o
-// cliente desktop usa, com cenas configuráveis (setup pendente, login
-// inválido, token expirado) e registra o que chegou.
+// Minimal Lain gateway stub. It serves the routes used by the desktop client,
+// exposes configurable setup/login/session scenarios, and records requests.
 class StubServer : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool setupRequired MEMBER setupRequired)
@@ -25,14 +24,15 @@ public:
     bool listen();
     QString baseUrl() const;
 
-    // Cenas
+    // Scenarios
     bool setupRequired = false;
     bool failLogin = false;
     QString token = QStringLiteral("test-token");
     QString password = QStringLiteral("password123");
+    bool paginateOneByOne = false;
 
-    // Observações
-    QList<QPair<QString, QString>> requests; // method, path (sem query)
+    // Observations
+    QList<QPair<QString, QString>> requests; // method and path without query
     QList<QJsonObject> progressPuts;
 
     void reset();

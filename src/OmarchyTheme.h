@@ -3,9 +3,9 @@
 #include <QFileSystemWatcher>
 #include <QObject>
 
-// Lê a paleta do Omarchy como o shell faz (theme/colors.toml) e expõe
-// para o QML. Sem dependência de Quickshell: FileView/Process viram
-// QFileSystemWatcher/QProcess. Recarrega ao trocar de tema.
+// Reads the Omarchy palette from theme/colors.toml and exposes it to QML.
+// QFileSystemWatcher/QProcess keep the native client independent of
+// Quickshell. Changes are reloaded when the active theme changes.
 class OmarchyTheme : public QObject {
     Q_OBJECT
     Q_PROPERTY(QColor foreground READ foreground NOTIFY themeChanged)
