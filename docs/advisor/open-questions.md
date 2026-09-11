@@ -1,0 +1,17 @@
+# Questions reserved for the user — lain-desktop
+
+The executor adds a row when the advisor returns `needs-user`.
+Never implement the item until the Answer column is filled.
+
+| ID | Date | Question | Context and options | User answer | Became decision |
+|----|------|----------|---------------------|-------------|-----------------|
+| QQ-S3-01 | 2026-09-11 | Which privileged actions may the Polkit helper perform? | Minimal allowlist (write/enable/start only desktop-provisioned systemd user unit + `docker compose up/down` for owned compose dir in $HOME) vs extended (plus install binary to user paths, fix media dir permissions, install/enable Docker). Advisor suggests minimal, no system paths, no Docker install, no media chmod. | Extended | DD-022 |
+| QQ-S3-02 | 2026-09-11 | When wizard finds an existing reachable server AND local tools, what is the default? | A) Connect to existing (avoid duplicate server/data). B) Provision new local (isolation). Must include trade-off text shown before any system change. Advisor suggests default to connect. | Connect existing | DD-023 |
+| QQ-S3-03 | 2026-09-11 | How should desktop-provisioned ownership be recorded and what is the owned vs external matrix? | Record via QSettings + marker/compose label; owned allows start/stop/update/uninstall/logs, external allows connect/diagnostics only, no stop/update. Confirm storage location/format and matrix. | QSettings + marker | DD-024 |
+| QQ-S3-04 | 2026-09-11 | When Docker daemon is missing, which fallback set is approved? | A) Offer binary vs user-service only, no Docker install offer, explain manual Docker path. B) Also offer guided Docker install. Advisor suggests A. | Hide Docker (A) | DD-025 |
+| QQ-S3-05 | 2026-09-11 | Should provisioning pin a server version or track latest, and who controls updates? | A) Pin at install + manual update only from Settings with confirm. B) Track latest + notify/manual apply. Confirm auto-update is forbidden. | Track latest + notify (B) | DD-026 |
+| QQ-S4-01 | 2026-09-11 | Approve Settings information architecture (layout + section list/order)? | A) Single scrolling dense sections (Connection/Libraries/Users/Plugins/Maintenance/Language/Appearance/About) vs B) sidebar navigation. Taste requires dense sections/tables without excessive cards. | Single scrolling (A) | DD-027 |
+| QQ-S4-02 | 2026-09-11 | Which admin operations must desktop expose and must destructive actions confirm? | Candidate: create/delete libraries, trigger scan, manage users, enable/disable plugins, backup/restore. Expose only what versioned server API supports, with explicit confirm on destructive actions. | Full + confirm | DD-028 |
+| QQ-S4-03 | 2026-09-11 | For identity v2, survive move/rename and how to migrate path-derived IDs? | A) Content-hash stable ID with alias/migration map under versioned contract vs B) keep path-derived IDs and accept new ID on move. Confirm contract version and migration path. | Stable + migrate (A) | DD-029 |
+| QQ-S4-04 | 2026-09-11 | How should episodes group into series navigation and where do specials/extras live? | A) Strict series/season/episode hierarchy with Specials section vs B) flat title grouping with filters. Confirm grouping key and specials rule. | Hierarchy (A) | DD-030 |
+| QQ-S4-05 | 2026-09-11 | What are approved resume/autoplay defaults and where are they configured? | Auto-resume vs ask, autoplay next episode on/off, per-series memory. Confirm defaults and location (Settings/Playback vs per-series toggle). | Auto + autoplay | DD-031 |
