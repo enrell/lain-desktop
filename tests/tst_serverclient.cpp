@@ -265,8 +265,42 @@ private slots:
         QVERIFY(m_client->nextEpisodeId(QStringLiteral("show-1")).isEmpty());
     }
 
-    void playbackDefaultsPersist() {
+    void swapProvidersUpdatesComposition() {
         QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->composition().size(), 2);
+        const quint64 before = m_client->composition().first().toMap().value("generation").toULongLong();
+        m_client->swapProviders(QStringLiteral("lain.metadata.search@1"),
+                                QStringList{"lain-metadata-anilist", "lain-metadata-nfo"});
+        QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("updated")));
+        QCOMPARE(m_client->composition().first().toMap().value("generation").toULongLong(), before + 1);
+        QCOMPARE(m_client->composition().first().toMap().value("providers").toStringList(),
+                 QStringList({QStringLiteral("lain-metadata-anilist"), QStringLiteral("lain-metadata-nfo")}));
+    }
+
+    void queuesFailedProgressAndFlushesClientWins() {
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->movies().size(), 1);
+        m_stub->progressPuts.clear();
+        m_stub->failProgress = true;
+        m_client->reportProgress(QStringLiteral("movie-1"), 50.0, 100.0, false);
+        QTRY_COMPARE(m_client->pendingProgress(), 1);
+        QCOMPARE(m_stub->progressPuts.size(), 0);
+        m_stub->failProgress = false;
+        m_client->flushProgress();
+        QTRY_COMPARE(m_client->pendingProgress(), 0);
+        QCOMPARE(m_stub->progressPuts.size(), 1);
+        QCOMPARE(m_stub->progressPuts.first().value("position_sec").toDouble(), 50.0);
+    }
+
+    void validationRejectsBadInput() {
+        QVERIFY(startReadyClient());
+        m_client->createUser(QStringLiteral(""), QStringLiteral("short"), QStringLiteral("user"));
+        QCOMPARE(m_client->errorMessage().contains(QStringLiteral("8 characters")), true);
+        m_client->createLibrary(QStringLiteral(""), QStringLiteral("movie"), QStringLiteral(""));
+        QCOMPARE(m_client->errorMessage().contains(QStringLiteral("required")), true);
+    }
+
+    void playbackDefaultsPersist() {        QVERIFY(startReadyClient());
         QVERIFY(m_client->autoResume());
         QVERIFY(m_client->autoplayNext());
         m_client->setAutoResume(false);

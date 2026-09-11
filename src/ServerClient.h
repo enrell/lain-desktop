@@ -53,7 +53,7 @@ class ServerClient : public QObject {
     Q_PROPERTY(QVariantList users READ users NOTIFY usersChanged)
     Q_PROPERTY(QVariantMap scanState READ scanState NOTIFY scanChanged)
     Q_PROPERTY(QVariantList pluginInfo READ pluginInfo NOTIFY pluginsChanged)
-    Q_PROPERTY(QVariantMap composition READ composition NOTIFY pluginsChanged)
+    Q_PROPERTY(QVariantList composition READ composition NOTIFY pluginsChanged)
     Q_PROPERTY(QString adminStatus READ adminStatus NOTIFY adminChanged)
     Q_PROPERTY(QVariantList series READ series NOTIFY catalogChanged)
     Q_PROPERTY(bool autoResume READ autoResume WRITE setAutoResume NOTIFY playbackSettingsChanged)
@@ -62,6 +62,7 @@ class ServerClient : public QObject {
     Q_PROPERTY(QVariantMap currentMedia READ currentMedia NOTIFY currentMediaChanged)
     Q_PROPERTY(bool loadingItem READ loadingItem NOTIFY currentMediaChanged)
     Q_PROPERTY(QString playbackError READ playbackError NOTIFY playbackErrorChanged)
+    Q_PROPERTY(int pendingProgress READ pendingProgress NOTIFY progressQueueChanged)
 
 public:
     explicit ServerClient(QObject *parent = nullptr);
@@ -93,7 +94,7 @@ public:
     QVariantList users() const { return m_users; }
     QVariantMap scanState() const { return m_scan; }
     QVariantList pluginInfo() const { return m_pluginInfo; }
-    QVariantMap composition() const { return m_composition; }
+    QVariantList composition() const { return m_composition; }
     QString adminStatus() const { return m_adminStatus; }
     QVariantList series() const { return m_series; }
     bool autoResume() const { return m_autoResume; }
@@ -104,6 +105,7 @@ public:
     QVariantMap currentMedia() const { return m_currentMedia; }
     bool loadingItem() const { return m_loadingItem; }
     QString playbackError() const { return m_playbackError; }
+    int pendingProgress() const { return m_queued.size(); }
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void login(const QString &username, const QString &password);
@@ -115,6 +117,7 @@ public:
     Q_INVOKABLE void openMedia(const QString &id);
     Q_INVOKABLE void requestPlayback(const QString &id);
     Q_INVOKABLE void reportProgress(const QString &id, double position, double duration, bool completed);
+    Q_INVOKABLE void flushProgress();
 
     Q_INVOKABLE void search(const QString &query);
     Q_INVOKABLE void clearSearch();
@@ -134,6 +137,7 @@ public:
     Q_INVOKABLE void triggerScan();
     Q_INVOKABLE void refreshScanStatus();
     Q_INVOKABLE void downloadBackup(const QString &filePath);
+    Q_INVOKABLE void swapProviders(const QString &capability, const QStringList &providers);
 
     // Series navigation (DD-030) and playback defaults (DD-031).
     Q_INVOKABLE QString seriesIdFor(const QString &id) const;
@@ -161,6 +165,7 @@ signals:
     void playbackSettingsChanged();
     void currentMediaChanged();
     void playbackErrorChanged();
+    void progressQueueChanged();
 
     void playbackReady(const QString &url, double positionSec, double durationSec);
     void playbackFailed(const QString &reason);
@@ -251,7 +256,7 @@ private:
     QVariantList m_users;
     QVariantMap m_scan;
     QVariantList m_pluginInfo;
-    QVariantMap m_composition;
+    QVariantList m_composition;
     QString m_adminStatus;
 
     QVariantList m_series;
@@ -261,6 +266,16 @@ private:
 
     QVariantMap m_currentMedia;
     bool m_loadingItem = false;
+
+    // Offline progress queue (DD-032): last position per item, persisted
+    // and bounded, flushed with queued-client-wins on reconnect.
+    QHash<QString, QVariantMap> m_queued;
+    QStringList m_queueOrder;
+    bool m_flushing = false;
+    void enqueueProgress(const QString &id, double position, double duration, bool completed);
+    void dequeueProgress(const QString &id);
+    void persistQueue();
+    void loadQueue();
 
     quint64 m_generation = 0;  // invalidates replies from previous sessions
 };

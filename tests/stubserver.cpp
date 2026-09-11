@@ -136,8 +136,23 @@ QJsonArray libraries() {
     };
 }
 
-QJsonArray users() {
+QJsonArray composition(quint64 generation, const QStringList &metadataOrder) {
+    QJsonArray order;
+    for (const QString &id : metadataOrder)
+        order.append(id);
     return QJsonArray{
+        QJsonObject{{"capability", "lain.metadata.search@1"},
+                    {"mode", "merge-many"},
+                    {"providers", order},
+                    {"generation", static_cast<qint64>(generation)}},
+        QJsonObject{{"capability", "lain.catalog.read@1"},
+                    {"mode", "exactly-one"},
+                    {"providers", QJsonArray{"lain-catalog-bolt"}},
+                    {"generation", static_cast<qint64>(generation)}},
+    };
+}
+
+QJsonArray users() {    return QJsonArray{
         QJsonObject{{"id", "user-admin"}, {"username", "admin"}, {"role", "admin"},
                     {"disabled", false}, {"pwd_ver", 1}, {"created_at", 1}},
         QJsonObject{{"id", "user-guest"}, {"username", "guest"}, {"role", "user"},
@@ -328,6 +343,27 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
                                      {"pwd_ver", 1}, {"created_at", 2}});
     }
 
+    if (method == QLatin1String("POST") && path == QLatin1String("/api/plugins/swap")) {
+        const QJsonObject in = QJsonDocument::fromJson(body).object();
+        const quint64 generation = static_cast<quint64>(in.value("generation").toDouble());
+        if (generation != compositionGeneration) {
+            status = 409;
+            return json(409, QJsonObject{{"error", "stale generation"},
+                                         {"code", "stale-generation"},
+                                         {"generation", static_cast<qint64>(compositionGeneration)}},
+                        "Conflict");
+        }
+        compositionGeneration++;
+        if (in.value("capability").toString() == QLatin1String("lain.metadata.search@1")) {
+            metadataOrder.clear();
+            for (const QJsonValue &v : in.value("providers").toArray())
+                metadataOrder << v.toString();
+        }
+        status = 200;
+        return json(200, QJsonObject{{"generation", static_cast<qint64>(compositionGeneration)},
+                                     {"composition", composition(compositionGeneration, metadataOrder)}});
+    }
+
     if (method == QLatin1String("GET") && path == QLatin1String("/api/admin/backup")) {
         status = 200;
         return respond(200, QByteArray("test-backup-bytes"), "OK");
@@ -374,7 +410,7 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
         const QJsonArray metadataCaps{"lain.metadata.search@1", "lain.metadata.resolve@1"};
         status = 200;
         return json(200, QJsonObject{
-                             {"composition", QJsonObject{{"generation", 1}, {"bindings", QJsonArray{}}}},
+                             {"composition", composition(compositionGeneration, metadataOrder)},
                              {"providers", QJsonArray{"lain-metadata-anilist", "lain-metadata-nfo"}},
                              {"provider_info", QJsonArray{
                                  QJsonObject{{"id", "lain-metadata-anilist"}, {"capabilities", metadataCaps}, {"healthy", true}},
@@ -477,6 +513,10 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
         const QString id = path.mid(int(qstrlen("/api/items/")),
                                     path.size() - int(qstrlen("/api/items/")) - int(qstrlen("/progress")));
         if (method == QLatin1String("PUT")) {
+            if (failProgress) {
+                status = 500;
+                return json(500, QJsonObject{{"error", "injected progress failure"}}, "Server Error");
+            }
             QJsonObject in = QJsonDocument::fromJson(body).object();
             in.insert("item_id", id);
             in.insert("user_id", "user-admin");

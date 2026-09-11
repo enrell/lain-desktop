@@ -617,6 +617,10 @@
         <translation>Backup salvo em %1.</translation>
     </message>
     <message>
+        <source>Composition changed elsewhere. Review and retry.</source>
+        <translation>A composição mudou. Revise e tente de novo.</translation>
+    </message>
+    <message>
         <source>Could not write backup file.</source>
         <translation>Não foi possível gravar o arquivo de backup.</translation>
     </message>
@@ -641,6 +645,10 @@
         <translation>Biblioteca excluída.</translation>
     </message>
     <message>
+        <source>Library name and path are required.</source>
+        <translation>Nome e caminho da biblioteca são obrigatórios.</translation>
+    </message>
+    <message>
         <source>Only administrators can enrich metadata.</source>
         <translation>Apenas administradores podem enriquecer metadados.</translation>
     </message>
@@ -649,8 +657,16 @@
         <translation>Apenas administradores podem remover metadados.</translation>
     </message>
     <message>
+        <source>Password must be at least 8 characters.</source>
+        <translation>A senha deve ter ao menos 8 caracteres.</translation>
+    </message>
+    <message>
         <source>Password reset.</source>
         <translation>Senha redefinida.</translation>
+    </message>
+    <message>
+        <source>Providers updated for %1.</source>
+        <translation>Provedores atualizados para %1.</translation>
     </message>
     <message>
         <source>Request failed (%1)</source>
@@ -688,9 +704,25 @@
         <source>User role updated.</source>
         <translation>Função do usuário atualizada.</translation>
     </message>
+    <message>
+        <source>Username and password are required.</source>
+        <translation>Usuário e senha são obrigatórios.</translation>
+    </message>
+    <message>
+        <source>Username required, password at least 8 characters.</source>
+        <translation>Usuário obrigatório, senha com ao menos 8 caracteres.</translation>
+    </message>
 </context>
 <context>
     <name>SettingsView</name>
+    <message>
+        <source>%1 queued updates</source>
+        <translation>%1 atualizações na fila</translation>
+    </message>
+    <message>
+        <source>1 queued update</source>
+        <translation>1 atualização na fila</translation>
+    </message>
     <message>
         <source>About</source>
         <translation>Sobre</translation>
@@ -700,12 +732,20 @@
         <translation>A aparência segue o tema Omarchy ao vivo, sem reiniciar.</translation>
     </message>
     <message>
+        <source>Apply</source>
+        <translation>Aplicar</translation>
+    </message>
+    <message>
         <source>Autoplay next episode</source>
         <translation>Reproduzir próximo episódio automaticamente</translation>
     </message>
     <message>
         <source>Build %1</source>
         <translation>Compilação %1</translation>
+    </message>
+    <message>
+        <source>Change providers for %1? Playback, search, or metadata may be affected.</source>
+        <translation>Alterar provedores de %1? Reprodução, busca ou metadados podem ser afetados.</translation>
     </message>
     <message>
         <source>Change role of %1 to %2?</source>
@@ -762,10 +802,6 @@
     <message>
         <source>Font: monospace · Corners mirror Hyprland rounding (%1)</source>
         <translation>Fonte: monospace · Cantos espelham o arredondamento do Hyprland (%1)</translation>
-    </message>
-    <message>
-        <source>Healthy</source>
-        <translation>Saudável</translation>
     </message>
     <message>
         <source>Lain desktop %1</source>
@@ -876,8 +912,8 @@
         <translation>Sair</translation>
     </message>
     <message>
-        <source>Unhealthy</source>
-        <translation>Não saudável</translation>
+        <source>Tap a provider to select it:</source>
+        <translation>Toque em um provedor para selecioná-lo:</translation>
     </message>
     <message>
         <source>Username</source>

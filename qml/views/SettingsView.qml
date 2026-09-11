@@ -33,6 +33,27 @@ ColumnLayout {
         confirmDialog.open(action.message);
     }
 
+    function providerHealthy(id) {
+        var infos = server.pluginInfo || [];
+        for (var i = 0; i < infos.length; ++i) {
+            if (infos[i].id === id)
+                return infos[i].healthy !== false;
+        }
+        return true;
+    }
+
+    function capableProviders(capability, current) {
+        var infos = server.pluginInfo || [];
+        var out = [];
+        for (var i = 0; i < infos.length; ++i) {
+            var caps = infos[i].capabilities || [];
+            if (caps.indexOf(capability) < 0 || current.indexOf(infos[i].id) >= 0)
+                continue;
+            out.push(infos[i].id);
+        }
+        return out;
+    }
+
     function scanLabel() {
         var s = server.scanState || {};
         var state = s.state || "idle";
@@ -117,6 +138,15 @@ ColumnLayout {
                 font.pixelSize: Tokens.metaSize
                 wrapMode: Text.WordWrap
             }
+            Text {
+                visible: server.pendingProgress > 0
+                Layout.fillWidth: true
+                text: server.pendingProgress === 1 ? qsTr("1 queued update")
+                                                   : qsTr("%1 queued updates").arg(server.pendingProgress)
+                color: Tokens.themeAccent
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+            }
             RowLayout {
                 spacing: 10
                 Rectangle {
@@ -131,7 +161,10 @@ ColumnLayout {
                         font.family: Tokens.fontFamily
                         font.pixelSize: Tokens.metaSize
                     }
-                    MouseArea { anchors.fill: parent; onClicked: server.refresh() }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { server.refresh(); server.flushProgress(); }
+                    }
                 }
                 Rectangle {
                     Layout.preferredWidth: 120
@@ -429,6 +462,9 @@ ColumnLayout {
     }
 
     // ------------------------------------------------------------------ plugins
+    // Composition bindings with provider reorder/swap (DD-028). Applies
+    // confirm first; stale generations reload for review instead of
+    // overwriting another operator's change.
     ColumnLayout {
         Layout.fillWidth: true
         spacing: 10
@@ -441,45 +477,181 @@ ColumnLayout {
             font.weight: Font.DemiBold
         }
         Text {
-            visible: (server.pluginInfo || []).length === 0
+            visible: (server.composition || []).length === 0
             text: qsTr("No plugins reported.")
             color: Tokens.textTertiary
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize
         }
         Repeater {
-            model: server.pluginInfo || []
+            model: server.composition || []
             delegate: Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 44
+                Layout.preferredHeight: bindingCol.implicitHeight + 28
                 radius: Tokens.radiusMd
                 color: Tokens.surface1
                 border.color: Tokens.borderSubtle
-                RowLayout {
+                property string capability: modelData.capability
+                property string mode: modelData.mode
+                property var draft: (modelData.providers || []).slice()
+                property bool dirty: JSON.stringify(draft) !== JSON.stringify(modelData.providers || [])
+                ColumnLayout {
+                    id: bindingCol
                     anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 16
-                    spacing: 12
-                    Rectangle {
-                        Layout.preferredWidth: 8
-                        Layout.preferredHeight: 8
-                        radius: 4
-                        color: modelData.healthy ? Tokens.themeAccent : Tokens.themeUrgent
-                    }
+                    anchors.margins: 14
+                    spacing: 6
                     Text {
-                        Layout.preferredWidth: 220
-                        text: modelData.id
+                        Layout.fillWidth: true
+                        text: capability + "  ·  " + mode
                         color: Tokens.textPrimary
                         font.family: Tokens.fontFamily
                         font.pixelSize: Tokens.metaSize
-                        elide: Text.ElideRight
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideMiddle
+                    }
+                    Repeater {
+                        model: draft
+                        delegate: RowLayout {
+                            property int slot: index
+                            spacing: 8
+                            Rectangle {
+                                Layout.preferredWidth: 8
+                                Layout.preferredHeight: 8
+                                radius: 4
+                                color: root.providerHealthy(modelData) ? Tokens.themeAccent : Tokens.themeUrgent
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData
+                                color: Tokens.textSecondary
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                visible: mode !== "exactly-one"
+                                text: "▲"
+                                color: Tokens.textTertiary
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: slot > 0
+                                    onClicked: {
+                                        var next = draft.slice();
+                                        var tmp = next[slot - 1];
+                                        next[slot - 1] = next[slot];
+                                        next[slot] = tmp;
+                                        draft = next;
+                                    }
+                                }
+                            }
+                            Text {
+                                visible: mode !== "exactly-one"
+                                text: "▼"
+                                color: Tokens.textTertiary
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: slot < draft.length - 1
+                                    onClicked: {
+                                        var next = draft.slice();
+                                        var tmp = next[slot + 1];
+                                        next[slot + 1] = next[slot];
+                                        next[slot] = tmp;
+                                        draft = next;
+                                    }
+                                }
+                            }
+                            Text {
+                                visible: mode !== "exactly-one" && draft.length > 1
+                                text: "✕"
+                                color: Tokens.themeUrgent
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        var next = draft.slice();
+                                        next.splice(slot, 1);
+                                        draft = next;
+                                    }
+                                }
+                            }
+                            Text {
+                                visible: mode === "exactly-one"
+                                text: "●"
+                                color: Tokens.themeAccent
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: Tokens.metaSize
+                            }
+                        }
                     }
                     Text {
-                        Layout.fillWidth: true
-                        text: modelData.healthy ? qsTr("Healthy") : qsTr("Unhealthy")
+                        visible: mode === "exactly-one"
+                        text: qsTr("Tap a provider to select it:")
                         color: Tokens.textTertiary
                         font.family: Tokens.fontFamily
-                        font.pixelSize: Tokens.metaSize
+                        font.pixelSize: Tokens.metaSize - 1
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Repeater {
+                            model: root.capableProviders(capability, draft)
+                            delegate: Rectangle {
+                                width: addLabel.implicitWidth + 20
+                                height: 28
+                                radius: Tokens.radiusPill
+                                color: "transparent"
+                                border.color: Tokens.themeAccent
+                                Text {
+                                    id: addLabel
+                                    anchors.centerIn: parent
+                                    text: "+ " + modelData
+                                    color: Tokens.themeAccent
+                                    font.family: Tokens.fontFamily
+                                    font.pixelSize: Tokens.metaSize - 1
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: {
+                                        if (mode === "exactly-one")
+                                            draft = [modelData];
+                                        else {
+                                            var next = draft.slice();
+                                            next.push(modelData);
+                                            draft = next;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: 110
+                        Layout.preferredHeight: 32
+                        radius: Tokens.radiusMd
+                        visible: dirty && !provisioning.busy
+                        color: Tokens.themeAccent
+                        Text {
+                            anchors.centerIn: parent
+                            text: qsTr("Apply")
+                            color: "black"
+                            font.family: Tokens.fontFamily
+                            font.pixelSize: Tokens.metaSize
+                            font.bold: true
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.askConfirm({
+                                kind: "swapProviders",
+                                id: capability,
+                                extra: draft.slice(),
+                                message: qsTr("Change providers for %1? Playback, search, or metadata may be affected.").arg(capability)
+                            })
+                        }
                     }
                 }
             }
@@ -816,6 +988,8 @@ ColumnLayout {
                 server.setUserDisabled(action.id, true);
             else if (action.kind === "setRole")
                 server.setUserRole(action.id, action.extra);
+            else if (action.kind === "swapProviders")
+                server.swapProviders(action.id, action.extra);
         }
         onRejected: root.pendingConfirm = null
     }

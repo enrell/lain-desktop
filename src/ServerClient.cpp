@@ -3,6 +3,7 @@
 #include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
+#include <memory>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -42,6 +43,9 @@ ServerClient::ServerClient(QObject *parent) : QObject(parent) {
     m_autoResume = settings.value(QStringLiteral("playback/auto_resume"), true).toBool();
     m_autoplayNext = settings.value(QStringLiteral("playback/autoplay_next"), true).toBool();
     m_seriesAutoplay = settings.value(QStringLiteral("playback/series_autoplay")).toMap();
+    loadQueue();
+    if (!m_queued.isEmpty())
+        emit progressQueueChanged();
 }
 
 // --------------------------------------------------------------- session/state
@@ -165,6 +169,10 @@ void ServerClient::fetchMe() {
 }
 
 void ServerClient::login(const QString &username, const QString &password) {
+    if (username.trimmed().isEmpty() || password.isEmpty()) {
+        setError(tr("Username and password are required."));
+        return;
+    }
     setBusy(true);
     clearError();
     const QJsonObject body{{"username", username}, {"password", password}};
@@ -182,6 +190,10 @@ void ServerClient::login(const QString &username, const QString &password) {
 }
 
 void ServerClient::setup(const QString &username, const QString &password) {
+    if (username.trimmed().isEmpty() || password.size() < 8) {
+        setError(tr("Username required, password at least 8 characters."));
+        return;
+    }
     setBusy(true);
     clearError();
     const QJsonObject body{{"username", username}, {"password", password}};
@@ -263,55 +275,67 @@ QString ServerClient::streamUrlFor(const QString &id) const {
 
 void ServerClient::requestJson(const QString &method, const QString &path, const QJsonObject &body,
                                const QUrlQuery &query, bool auth, JsonCallback cb) {
-    QNetworkRequest request(apiUrl(path, query));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    request.setTransferTimeout(20000);
-    if (auth && !m_token.isEmpty())
-        request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
+    // DD-033: idempotent reads retry once on transport errors; mutations
+    // never retry (progress has its own offline queue, admin ops confirm).
+    auto send = std::make_shared<std::function<void(int)>>();
+    *send = [this, method, path, body, query, auth, cb, send](int attempt) {
+        QNetworkRequest request(apiUrl(path, query));
+        request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+        request.setTransferTimeout(20000);
+        if (auth && !m_token.isEmpty())
+            request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
 
-    const QByteArray payload = body.isEmpty() ? QByteArray()
-                                              : QJsonDocument(body).toJson(QJsonDocument::Compact);
-    QNetworkReply *reply = nullptr;
-    if (method == QLatin1String("POST"))
-        reply = m_net->post(request, payload);
-    else if (method == QLatin1String("PUT"))
-        reply = m_net->put(request, payload);
-    else if (method == QLatin1String("PATCH"))
-        reply = m_net->sendCustomRequest(request, "PATCH", payload);
-    else if (method == QLatin1String("DELETE"))
-        reply = m_net->deleteResource(request);
-    else
-        reply = m_net->get(request);
+        const QByteArray payload = body.isEmpty() ? QByteArray()
+                                                  : QJsonDocument(body).toJson(QJsonDocument::Compact);
+        QNetworkReply *reply = nullptr;
+        if (method == QLatin1String("POST"))
+            reply = m_net->post(request, payload);
+        else if (method == QLatin1String("PUT"))
+            reply = m_net->put(request, payload);
+        else if (method == QLatin1String("PATCH"))
+            reply = m_net->sendCustomRequest(request, "PATCH", payload);
+        else if (method == QLatin1String("DELETE"))
+            reply = m_net->deleteResource(request);
+        else
+            reply = m_net->get(request);
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, auth, cb] {
-        reply->deleteLater();
-        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray data = reply->readAll();
-        const bool networkError = reply->error() != QNetworkReply::NoError;
-        QJsonDocument doc;
-        if (!data.isEmpty())
-            doc = QJsonDocument::fromJson(data);
+        connect(reply, &QNetworkReply::finished, this,
+                [this, reply, auth, cb, send, attempt, method, path, body, query] {
+                    reply->deleteLater();
+                    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                    const QByteArray data = reply->readAll();
+                    const bool networkError = reply->error() != QNetworkReply::NoError;
+                    QJsonDocument doc;
+                    if (!data.isEmpty())
+                        doc = QJsonDocument::fromJson(data);
 
-        if (status == 401 && auth) {
-            clearSession();
-            setState(QStringLiteral("login"));
-            setError(tr("Session expired. Sign in again."));
-            if (cb)
-                cb(false, status, doc, QStringLiteral("unauthorized"));
-            return;
-        }
+                    if (networkError && status == 0 && method == QLatin1String("GET") && attempt == 0) {
+                        QTimer::singleShot(1000, this, [send] { (*send)(1); });
+                        return;
+                    }
 
-        if (networkError || status >= 400) {
-            const QString fallback = networkError && !reply->errorString().isEmpty()
-                                         ? reply->errorString()
-                                         : tr("Request failed (%1)").arg(status);
-            if (cb)
-                cb(false, status, doc, errorFrom(doc, fallback));
-            return;
-        }
-        if (cb)
-            cb(true, status, doc, QString());
-    });
+                    if (status == 401 && auth) {
+                        clearSession();
+                        setState(QStringLiteral("login"));
+                        setError(tr("Session expired. Sign in again."));
+                        if (cb)
+                            cb(false, status, doc, QStringLiteral("unauthorized"));
+                        return;
+                    }
+
+                    if (networkError || status >= 400) {
+                        const QString fallback = networkError && !reply->errorString().isEmpty()
+                                                     ? reply->errorString()
+                                                     : tr("Request failed (%1)").arg(status);
+                        if (cb)
+                            cb(false, status, doc, errorFrom(doc, fallback));
+                        return;
+                    }
+                    if (cb)
+                        cb(true, status, doc, QString());
+                });
+    };
+    (*send)(0);
 }
 
 // --------------------------------------------------------------------- catalog
@@ -322,6 +346,7 @@ void ServerClient::loadAfterLogin() {
     m_composition.clear();
     emit usersChanged();
     emit pluginsChanged();
+    flushProgress();
     loadLibraries();
     loadHome();
     loadPlugins();
@@ -357,7 +382,7 @@ void ServerClient::loadPlugins() {
                     }
                     m_metadataProviders = providers;
                     m_pluginInfo = infos;
-                    m_composition = root.value("composition").toObject().toVariantMap();
+                    m_composition = root.value("composition").toArray().toVariantList();
                     emit metadataProvidersChanged();
                     emit pluginsChanged();
                 });
@@ -902,13 +927,81 @@ void ServerClient::requestPlayback(const QString &id) {
 void ServerClient::reportProgress(const QString &id, double position, double duration, bool completed) {
     if (!ready() || id.isEmpty())
         return;
-    const QJsonObject body{{"position_sec", qMax(0.0, position)},
-                           {"duration_sec", qMax(0.0, duration)},
-                           {"completed", completed}};
+    const double pos = qMax(0.0, position);
+    const double dur = qMax(0.0, duration);
+    const QJsonObject body{{"position_sec", pos}, {"duration_sec", dur}, {"completed", completed}};
+    requestJson("PUT", QStringLiteral("/api/items/%1/progress").arg(encodeId(id)), body, {}, true,
+                [this, id, pos, dur, completed](bool ok, int status, const QJsonDocument &doc,
+                                                const QString &) {
+                    if (ok) {
+                        m_progress.insert(id, doc.object().toVariantMap());
+                        dequeueProgress(id);
+                        return;
+                    }
+                    if (status == 401)
+                        return; // session is dead; the next login flushes
+                    enqueueProgress(id, pos, dur, completed);
+                });
+}
+
+// Offline queue (DD-032). Only the latest write per item is kept; the
+// queue is bounded and persisted so positions survive restarts.
+void ServerClient::enqueueProgress(const QString &id, double position, double duration, bool completed) {
+    if (!m_queued.contains(id)) {
+        m_queueOrder << id;
+        while (m_queueOrder.size() > 200)
+            m_queued.remove(m_queueOrder.takeFirst());
+    }
+    m_queued.insert(id, QVariantMap{{"position", position},
+                                    {"duration", duration},
+                                    {"completed", completed}});
+    persistQueue();
+    emit progressQueueChanged();
+}
+
+void ServerClient::dequeueProgress(const QString &id) {
+    if (!m_queued.contains(id))
+        return;
+    m_queued.remove(id);
+    m_queueOrder.removeAll(id);
+    persistQueue();
+    emit progressQueueChanged();
+}
+
+void ServerClient::persistQueue() {
+    QVariantMap stored;
+    for (auto it = m_queued.constBegin(); it != m_queued.constEnd(); ++it)
+        stored.insert(it.key(), it.value());
+    QSettings().setValue(QStringLiteral("progress/queue"), stored);
+}
+
+void ServerClient::loadQueue() {
+    m_queued.clear();
+    m_queueOrder.clear();
+    const QVariantMap stored = QSettings().value(QStringLiteral("progress/queue")).toMap();
+    for (auto it = stored.constBegin(); it != stored.constEnd(); ++it) {
+        m_queued.insert(it.key(), it.value().toMap());
+        m_queueOrder << it.key();
+    }
+}
+
+void ServerClient::flushProgress() {
+    if (!ready() || m_flushing || m_queued.isEmpty())
+        return;
+    m_flushing = true;
+    const QString id = m_queueOrder.first();
+    const QVariantMap entry = m_queued.value(id);
+    const QJsonObject body{{"position_sec", entry.value("position").toDouble()},
+                           {"duration_sec", entry.value("duration").toDouble()},
+                           {"completed", entry.value("completed").toBool()}};
     requestJson("PUT", QStringLiteral("/api/items/%1/progress").arg(encodeId(id)), body, {}, true,
                 [this, id](bool ok, int, const QJsonDocument &doc, const QString &) {
-                    if (ok)
-                        m_progress.insert(id, doc.object().toVariantMap());
+                    m_flushing = false;
+                    if (!ok)
+                        return; // stays queued for the next reconnect
+                    m_progress.insert(id, doc.object().toVariantMap());
+                    dequeueProgress(id);
+                    flushProgress();
                 });
 }
 
@@ -1006,6 +1099,11 @@ void ServerClient::loadUsers() {
 void ServerClient::createUser(const QString &username, const QString &password, const QString &role) {
     if (!ready())
         return;
+    // DD-033: mirror the server rules before any network traffic.
+    if (username.trimmed().isEmpty() || password.size() < 8) {
+        setError(tr("Username required, password at least 8 characters."));
+        return;
+    }
     QJsonObject body{{"username", username}, {"password", password}, {"role", role}};
     requestJson("POST", QStringLiteral("/api/users"), body, {}, true,
                 [this, username](bool ok, int, const QJsonDocument &, const QString &err) {
@@ -1052,6 +1150,10 @@ void ServerClient::setUserRole(const QString &id, const QString &role) {
 void ServerClient::resetUserPassword(const QString &id, const QString &password) {
     if (!ready() || id.isEmpty())
         return;
+    if (password.size() < 8) {
+        setError(tr("Password must be at least 8 characters."));
+        return;
+    }
     QJsonObject body{{"password", password}};
     requestJson("PATCH", QStringLiteral("/api/users/%1").arg(encodeId(id)), body, {}, true,
                 [this](bool ok, int, const QJsonDocument &, const QString &err) {
@@ -1066,6 +1168,10 @@ void ServerClient::resetUserPassword(const QString &id, const QString &password)
 void ServerClient::createLibrary(const QString &name, const QString &type, const QString &path) {
     if (!ready())
         return;
+    if (name.trimmed().isEmpty() || path.trimmed().isEmpty()) {
+        setError(tr("Library name and path are required."));
+        return;
+    }
     QJsonObject body{{"name", name}, {"type", type}, {"path", path}};
     requestJson("POST", QStringLiteral("/api/libraries"), body, {}, true,
                 [this, name](bool ok, int, const QJsonDocument &, const QString &err) {
@@ -1137,8 +1243,39 @@ void ServerClient::refreshScanStatus() {
                 });
 }
 
-void ServerClient::downloadBackup(const QString &filePath) {
-    if (!ready() || filePath.isEmpty() || m_token.isEmpty())
+// Plugin composition swap (DD-028). The cached binding generation goes
+// with the request; a 409 means someone else swapped first, so reload
+// and ask the operator to review before retrying.
+void ServerClient::swapProviders(const QString &capability, const QStringList &providers) {
+    if (!ready() || capability.isEmpty() || providers.isEmpty())
+        return;
+    quint64 generation = 0;
+    for (const QVariant &v : m_composition) {
+        const QVariantMap binding = v.toMap();
+        if (binding.value("capability").toString() == capability)
+            generation = static_cast<quint64>(binding.value("generation").toULongLong());
+    }
+    QJsonObject body{{"capability", capability},
+                     {"providers", QJsonArray::fromStringList(providers)},
+                     {"generation", static_cast<qint64>(generation)}};
+    requestJson("POST", QStringLiteral("/api/plugins/swap"), body, {}, true,
+                [this, capability](bool ok, int status, const QJsonDocument &doc, const QString &err) {
+                    if (!ok) {
+                        if (status == 409) {
+                            setAdminStatus(tr("Composition changed elsewhere. Review and retry."));
+                            loadPlugins();
+                            return;
+                        }
+                        setError(err);
+                        return;
+                    }
+                    m_composition = doc.object().value("composition").toArray().toVariantList();
+                    emit pluginsChanged();
+                    setAdminStatus(tr("Providers updated for %1.").arg(capability));
+                });
+}
+
+void ServerClient::downloadBackup(const QString &filePath) {    if (!ready() || filePath.isEmpty() || m_token.isEmpty())
         return;
     QUrl url = apiUrl(QStringLiteral("/api/admin/backup"));
     QNetworkRequest req(url);

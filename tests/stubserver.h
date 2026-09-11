@@ -30,6 +30,10 @@ public:
     QString token = QStringLiteral("test-token");
     QString password = QStringLiteral("password123");
     bool paginateOneByOne = false;
+    bool failProgress = false;
+    quint64 compositionGeneration = 1;
+    QStringList metadataOrder = {QStringLiteral("lain-metadata-nfo"),
+                                 QStringLiteral("lain-metadata-anilist")};
 
     // Observations
     QList<QPair<QString, QString>> requests; // method and path without query
