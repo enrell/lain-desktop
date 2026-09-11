@@ -47,7 +47,6 @@ Window {
                 seriesModel: server.series
                 showSeries: root.route === "shows"
                 onOpenMedia: m => { root.returnRoute = root.route; root.route = "detail"; server.openMedia(m.id); }
-                onPlayMedia: m => { root.returnRoute = root.route; server.openMedia(m.id); server.requestPlayback(m.id); root.route = "player"; }
                 onSearchRequested: t => searchOverlay.openWith(t)
                 onAccount: root.route = "settings"
             }

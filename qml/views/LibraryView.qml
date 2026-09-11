@@ -14,7 +14,6 @@ ColumnLayout {
 
     property var seriesModel: []
     property bool showSeries: false
-    signal playMedia(var media)
 
     property string selectedGenre: "__all__"
     property string sortMode: "title" // title | year
