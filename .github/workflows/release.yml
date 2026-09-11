@@ -54,11 +54,14 @@ jobs:
           fi
           ./linuxdeploy --appdir AppDir --plugin qt "${extra[@]}" --output appimage
 
-          shopt -s nullglob
-          for f in lain*.AppImage; do
-            mv "$f" "lain-desktop_${VERSION}_linux_x86_64.AppImage"
-          done
-          shopt -u nullglob
+          shopt -s nullglob nocaseglob
+          imgs=(lain*.AppImage)
+          shopt -u nullglob nocaseglob
+          if [ "${#imgs[@]}" -ne 1 ]; then
+            echo "expected exactly one AppImage, found: ${imgs[*]-none}" >&2
+            exit 1
+          fi
+          mv "${imgs[0]}" "lain-desktop_${VERSION}_linux_x86_64.AppImage"
           test -f "lain-desktop_${VERSION}_linux_x86_64.AppImage"
           sha256sum "lain-desktop_${VERSION}_linux_x86_64.AppImage" > "lain-desktop_${VERSION}_linux_x86_64.AppImage.sha256"
       - uses: actions/upload-artifact@v7
