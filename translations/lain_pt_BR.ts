@@ -387,6 +387,22 @@
 <context>
     <name>Provisioning</name>
     <message>
+        <source>App is up to date.</source>
+        <translation>App atualizado.</translation>
+    </message>
+    <message>
+        <source>App update available: %1</source>
+        <translation>Atualização do app disponível: %1</translation>
+    </message>
+    <message>
+        <source>App update failed checksum verification.</source>
+        <translation>A atualização falhou na verificação de checksum.</translation>
+    </message>
+    <message>
+        <source>App updated to %1. Restart to use it.</source>
+        <translation>App atualizado para %1. Reinicie para usar.</translation>
+    </message>
+    <message>
         <source>Binary</source>
         <translation>Binário</translation>
     </message>
@@ -399,8 +415,16 @@
         <translation>Binário removido de %1.</translation>
     </message>
     <message>
+        <source>Check for app updates first.</source>
+        <translation>Verifique atualizações do app primeiro.</translation>
+    </message>
+    <message>
         <source>Checking for a local server and provisioning tools…</source>
         <translation>Verificando servidor local e ferramentas…</translation>
+    </message>
+    <message>
+        <source>Checking for app updates…</source>
+        <translation>Verificando atualizações do app…</translation>
     </message>
     <message>
         <source>Checking for server updates…</source>
@@ -419,8 +443,16 @@
         <translation>Não foi possível criar os diretórios de provisionamento.</translation>
     </message>
     <message>
+        <source>Could not download the app update.</source>
+        <translation>Não foi possível baixar a atualização do app.</translation>
+    </message>
+    <message>
         <source>Could not download the server release.</source>
         <translation>Não foi possível baixar a versão do servidor.</translation>
+    </message>
+    <message>
+        <source>Could not install the app update.</source>
+        <translation>Não foi possível instalar a atualização do app.</translation>
     </message>
     <message>
         <source>Could not install the server binary.</source>
@@ -463,6 +495,10 @@
         <translation>Não foi possível descompactar a versão do servidor.</translation>
     </message>
     <message>
+        <source>Could not write the app update.</source>
+        <translation>Não foi possível gravar a atualização do app.</translation>
+    </message>
+    <message>
         <source>Could not write the compose environment.</source>
         <translation>Não foi possível gravar o ambiente compose.</translation>
     </message>
@@ -481,6 +517,10 @@
     <message>
         <source>Docker needs a running daemon. Install Docker manually, then return.</source>
         <translation>O Docker precisa de um daemon em execução. Instale o Docker manualmente e volte.</translation>
+    </message>
+    <message>
+        <source>Downloading the app update…</source>
+        <translation>Baixando a atualização do app…</translation>
     </message>
     <message>
         <source>Downloading the server release…</source>
@@ -728,6 +768,10 @@
         <translation>Sobre</translation>
     </message>
     <message>
+        <source>App update available: %1</source>
+        <translation>Atualização do app disponível: %1</translation>
+    </message>
+    <message>
         <source>Appearance follows the Omarchy theme live, without restarting.</source>
         <translation>A aparência segue o tema Omarchy ao vivo, sem reiniciar.</translation>
     </message>
@@ -750,6 +794,10 @@
     <message>
         <source>Change role of %1 to %2?</source>
         <translation>Alterar função de %1 para %2?</translation>
+    </message>
+    <message>
+        <source>Check for app updates</source>
+        <translation>Verificar atualizações do app</translation>
     </message>
     <message>
         <source>Connected</source>
@@ -914,6 +962,10 @@
     <message>
         <source>Tap a provider to select it:</source>
         <translation>Toque em um provedor para selecioná-lo:</translation>
+    </message>
+    <message>
+        <source>Update to %1</source>
+        <translation>Atualizar para %1</translation>
     </message>
     <message>
         <source>Username</source>

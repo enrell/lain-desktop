@@ -137,8 +137,43 @@ private slots:
         QVERIFY(QDir(m_base->path() + QStringLiteral("/data")).exists());
     }
 
-    void guardsMediaPermissionFixes() {
-        QSignalSpy done(m_prov, &Provisioning::taskFinished);
+    void comparesDesktopVersions() {
+        QCOMPARE(Provisioning::compareVersions(QStringLiteral("0.1.0"), QStringLiteral("0.2.0")), -1);
+        QCOMPARE(Provisioning::compareVersions(QStringLiteral("v0.2.0"), QStringLiteral("0.2.0")), 0);
+        QCOMPARE(Provisioning::compareVersions(QStringLiteral("0.2.1"), QStringLiteral("0.2.0")), 1);
+        QCOMPARE(Provisioning::compareVersions(QStringLiteral("0.10.0"), QStringLiteral("0.9.3")), 1);
+        QCOMPARE(Provisioning::compareVersions(QStringLiteral("1.0"), QStringLiteral("1.0.0")), 0);
+    }
+
+    void buildsDesktopAssetUrl() {
+        QCOMPARE(Provisioning::desktopAssetUrl(QStringLiteral("v0.2.1")),
+                 QStringLiteral("https://github.com/enrell/lain-desktop/releases/download/v0.2.1/"
+                                "lain-desktop_0.2.1_linux_x86_64.AppImage"));
+    }
+
+    void installsDesktopFileWithIconRefresh() {
+        // A fake AppImage (shell script) stands in for the bundle: it must
+        // gain the executable bit, land on the target, and refresh the icon.
+        const QString fake = m_base->path() + QStringLiteral("/update.AppImage");
+        QFile script(fake);
+        QVERIFY(script.open(QIODevice::WriteOnly | QIODevice::Text));
+        script.write("#!/bin/sh\n"
+                     "if [ \"$1\" = \"--appimage-extract\" ]; then\n"
+                     "  mkdir -p \"squashfs-root/usr/share/icons/hicolor/256x256/apps\"\n"
+                     "  printf \"new-icon\" > \"squashfs-root/usr/share/icons/hicolor/256x256/apps/lain-desktop.png\"\n"
+                     "fi\n");
+        script.close();
+        const QString target = m_base->path() + QStringLiteral("/bin/lain-desktop");
+        QVERIFY(m_prov->installDesktopFile(fake, target));
+        QFileInfo installed(target);
+        QVERIFY(installed.isExecutable());
+        QFile icon(m_base->path() +
+                   QStringLiteral("/.local/share/icons/hicolor/256x256/apps/lain-desktop.png"));
+        QVERIFY(icon.open(QIODevice::ReadOnly));
+        QCOMPARE(icon.readAll(), QByteArray("new-icon"));
+    }
+
+    void guardsMediaPermissionFixes() {        QSignalSpy done(m_prov, &Provisioning::taskFinished);
         m_prov->fixMediaPermissions(QStringLiteral("/"));
         QCOMPARE(done.count(), 1);
         QVERIFY(!done.first().first().toBool());

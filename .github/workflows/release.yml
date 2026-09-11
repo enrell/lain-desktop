@@ -47,6 +47,23 @@ jobs:
           export APPIMAGE_EXTRACT_AND_RUN=1
           export QML_SOURCES_PATHS="$PWD/qml"
 
+          # Native Wayland support: the Qt plugin only auto-detects xcb,
+          # which forces XWayland plus a foreign GL stack on Wayland-first
+          # systems. Seed the Wayland platform plugins from the exact Qt
+          # build used here; the plugin pass below deploys their deps.
+          plugdir="$(command -v qmake >/dev/null 2>&1 && qmake -query QT_INSTALL_PLUGINS || true)"
+          test -n "$plugdir" && test -d "$plugdir/platforms"
+          for sub in platforms wayland-shell-integration wayland-graphics-integration-client wayland-decoration-client; do
+            if [ -d "$plugdir/$sub" ]; then
+              mkdir -p "AppDir/usr/plugins/$sub"
+              for lib in "$plugdir/$sub"/*.so; do
+                [ -e "$lib" ] || continue
+                cp -n "$lib" "AppDir/usr/plugins/$sub/"
+              done
+            fi
+          done
+          test -f AppDir/usr/plugins/platforms/libqwayland-egl.so
+
           ./linuxdeploy --appdir AppDir
           extra=()
           if [ -e /usr/lib/x86_64-linux-gnu/libxcb-cursor.so.0 ]; then
@@ -64,6 +81,21 @@ jobs:
           mv "${imgs[0]}" "lain-desktop_${VERSION}_linux_x86_64.AppImage"
           test -f "lain-desktop_${VERSION}_linux_x86_64.AppImage"
           sha256sum "lain-desktop_${VERSION}_linux_x86_64.AppImage" > "lain-desktop_${VERSION}_linux_x86_64.AppImage.sha256"
+          # Packaging smoke test: boot the bundle headless. A packaging
+          # fault (missing platform plugin, broken rpath) must fail the
+          # release here, not on a user's machine. Exit 124 means the app
+          # was still running when the timeout hit (healthy); 139/134 are
+          # crash signals and fail the build.
+          set +e
+          QT_QPA_PLATFORM=offscreen timeout -s KILL 20 ./lain-desktop_${VERSION}_linux_x86_64.AppImage > /tmp/smoke.log 2>&1
+          code=$?
+          set -e
+          if [ "$code" -eq 139 ] || [ "$code" -eq 134 ]; then
+            echo "AppImage crashed headless (signal exit $code):"
+            tail -20 /tmp/smoke.log
+            exit 1
+          fi
+          echo "smoke exit: $code"
       - uses: actions/upload-artifact@v7
         with:
           name: lain-desktop-appimage

@@ -1,5 +1,7 @@
 #include "Provisioning.h"
 
+#include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -7,9 +9,11 @@
 #include <QJsonDocument>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QSysInfo>
+#include <QTemporaryDir>
 #include <QUrl>
 #include <unistd.h>
 
@@ -667,4 +671,178 @@ void Provisioning::fixMediaPermissions(const QString &path) {
              QStringLiteral("--reference=") + homeBase(), clean},
             {}, [this, clean] { finishTask(true, tr("Permissions fixed for %1.").arg(clean)); },
             tr("Permission change failed."));
+}
+
+// ------------------------------------------------- desktop self-update
+
+QString Provisioning::desktopExecutable() const {
+    return QCoreApplication::applicationFilePath();
+}
+
+int Provisioning::compareVersions(const QString &a, const QString &b) {
+    // Numeric dotted comparison ignoring a leading 'v' and any suffix
+    // after '-' or '+'. Missing segments read as zero.
+    auto parts = [](const QString &v) {
+        QString core = v.trimmed();
+        if (core.startsWith(QLatin1Char('v')) || core.startsWith(QLatin1Char('V')))
+            core = core.mid(1);
+        const int cut = core.indexOf(QRegularExpression(QStringLiteral("[-+]")));
+        if (cut >= 0)
+            core = core.left(cut);
+        QList<int> out;
+        for (const QString &p : core.split(QLatin1Char('.'))) {
+            bool ok = false;
+            const int n = p.toInt(&ok);
+            out << (ok ? n : 0);
+        }
+        return out;
+    };
+    const QList<int> pa = parts(a), pb = parts(b);
+    for (int i = 0; i < qMax(pa.size(), pb.size()); ++i) {
+        const int na = i < pa.size() ? pa[i] : 0;
+        const int nb = i < pb.size() ? pb[i] : 0;
+        if (na != nb)
+            return na < nb ? -1 : 1;
+    }
+    return 0;
+}
+
+QString Provisioning::desktopAssetUrl(const QString &tag) {
+    const QString clean = tag.trimmed().startsWith(QLatin1Char('v')) ? tag.trimmed() : QStringLiteral("v") + tag.trimmed();
+    const QString ver = clean.mid(1);
+    return QStringLiteral("https://github.com/enrell/lain-desktop/releases/download/%1/lain-desktop_%2_linux_x86_64.AppImage")
+        .arg(clean, ver);
+}
+
+bool Provisioning::desktopUpdateAvailable() const {
+    if (m_desktopLatest.isEmpty())
+        return false;
+    return compareVersions(QCoreApplication::applicationVersion(), m_desktopLatest) < 0;
+}
+
+void Provisioning::checkDesktopUpdates() {
+    setStatus(tr("Checking for app updates…"));
+    QNetworkRequest req{QUrl(QStringLiteral("https://api.github.com/repos/enrell/lain-desktop/releases/latest"))};
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("lain-desktop"));
+    QNetworkReply *reply = m_net->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            setStatus(tr("Could not check for updates."));
+            return;
+        }
+        const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString tag = obj.value("tag_name").toString().trimmed();
+        if (tag.isEmpty()) {
+            setStatus(tr("Could not check for updates."));
+            return;
+        }
+        m_desktopLatest = tag.startsWith(QLatin1Char('v')) ? tag.mid(1) : tag;
+        if (desktopUpdateAvailable())
+            setStatus(tr("App update available: %1").arg(tag));
+        else
+            setStatus(tr("App is up to date."));
+        emit changed();
+    });
+}
+
+bool Provisioning::installDesktopFile(const QString &sourcePath, const QString &targetPath) {
+    const QFileInfo target(targetPath);
+    if (sourcePath.isEmpty() || targetPath.isEmpty() || !target.isAbsolute())
+        return false;
+    if (!QDir().mkpath(target.absolutePath()))
+        return false;
+    QFile source(sourcePath);
+    if (!source.open(QIODevice::ReadOnly))
+        return false;
+    source.close();
+    if (!source.permissions().testFlag(QFile::ExeOwner) &&
+        !QFile::setPermissions(sourcePath, source.permissions() | QFile::ExeOwner | QFile::ExeGroup |
+                                                  QFile::ExeOther))
+        return false;
+    if (QFile::exists(targetPath)) {
+        const QString backup = targetPath + QStringLiteral(".bak");
+        QFile::remove(backup);
+        if (!QFile::rename(targetPath, backup))
+            return false;
+    }
+    if (!QFile::copy(sourcePath, targetPath))
+        return false;
+    // Refresh the launcher icon from the new bundle (same layout the
+    // installer expects from every release asset).
+    QTemporaryDir extract;
+    if (extract.isValid()) {
+        QProcess proc;
+        proc.setWorkingDirectory(extract.path());
+        proc.start(targetPath, {QStringLiteral("--appimage-extract"),
+                                QStringLiteral("usr/share/icons/hicolor/256x256/apps/lain-desktop.png")});
+        if (proc.waitForFinished(60000) && proc.exitCode() == 0) {
+            const QString icon = extract.path() +
+                                 QStringLiteral("/squashfs-root/usr/share/icons/hicolor/256x256/apps/lain-desktop.png");
+            if (QFile::exists(icon)) {
+                const QString dest = homeBase() +
+                                     QStringLiteral("/.local/share/icons/hicolor/256x256/apps/lain-desktop.png");
+                QDir().mkpath(QFileInfo(dest).absolutePath());
+                QFile::remove(dest);
+                QFile::copy(icon, dest);
+            }
+        }
+    }
+    return true;
+}
+
+void Provisioning::applyDesktopUpdate(const QString &targetPath) {
+    if (targetPath.isEmpty() || m_desktopLatest.isEmpty()) {
+        finishTask(false, tr("Check for app updates first."));
+        return;
+    }
+    const QString tag = m_desktopLatest.startsWith(QLatin1Char('v')) ? m_desktopLatest
+                                                                     : QStringLiteral("v") + m_desktopLatest;
+    const QString url = desktopAssetUrl(tag);
+    if (!m_testBase.isEmpty())
+        m_commands << QStringLiteral("download %1").arg(url);
+    setBusy(true);
+    setStatus(tr("Downloading the app update…"));
+    QNetworkRequest req{QUrl(url)};
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("lain-desktop"));
+    QNetworkReply *reply = m_net->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url, targetPath, tag] {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            finishTask(false, tr("Could not download the app update."));
+            return;
+        }
+        const QByteArray bytes = reply->readAll();
+        // Verify against the published sha256 sidecar before touching disk.
+        QNetworkRequest sumReq(QUrl(url + QStringLiteral(".sha256")));
+        sumReq.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("lain-desktop"));
+        QNetworkReply *sumReply = m_net->get(sumReq);
+        connect(sumReply, &QNetworkReply::finished, this, [this, sumReply, bytes, targetPath, tag] {
+            sumReply->deleteLater();
+            bool verified = false;
+            if (sumReply->error() == QNetworkReply::NoError) {
+                const QString expected =
+                    QString::fromUtf8(sumReply->readAll()).split(QRegularExpression(QStringLiteral("\\s+"))).first();
+                const QString actual = QString::fromLatin1(
+                    QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex());
+                verified = !expected.isEmpty() && expected.compare(actual, Qt::CaseInsensitive) == 0;
+            }
+            if (!verified) {
+                finishTask(false, tr("App update failed checksum verification."));
+                return;
+            }
+            const QString tmp = QDir::tempPath() + QStringLiteral("/lain-desktop-update.AppImage");
+            QFile out(tmp);
+            if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate) || out.write(bytes) != bytes.size()) {
+                finishTask(false, tr("Could not write the app update."));
+                return;
+            }
+            out.close();
+            if (!installDesktopFile(tmp, targetPath)) {
+                finishTask(false, tr("Could not install the app update."));
+                return;
+            }
+            finishTask(true, tr("App updated to %1. Restart to use it.").arg(tag));
+        });
+    });
 }

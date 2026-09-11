@@ -6,7 +6,10 @@ import Lain
 // Keyboard: Enter confirms, Esc cancels. Focus lands on Cancel.
 Rectangle {
     id: root
-    anchors.fill: parent
+    // Fullscreen overlay. Width/height bindings (not anchors) so hosts may
+    // place this inside a layout without undefined anchor behavior.
+    width: parent ? parent.width : 0
+    height: parent ? parent.height : 0
     color: "#000000B8"
     z: 50
     visible: false

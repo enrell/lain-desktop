@@ -962,6 +962,55 @@ ColumnLayout {
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize - 1
         }
+        Text {
+            Layout.fillWidth: true
+            visible: provisioning.desktopUpdateAvailable
+            text: qsTr("App update available: %1").arg(provisioning.desktopLatest)
+            color: Tokens.themeAccent
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize
+        }
+        RowLayout {
+            spacing: 10
+            Rectangle {
+                Layout.preferredWidth: 170
+                Layout.preferredHeight: 32
+                radius: Tokens.radiusMd
+                color: Tokens.surface2
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Check for app updates")
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: !provisioning.busy
+                    onClicked: provisioning.checkDesktopUpdates()
+                }
+            }
+            Rectangle {
+                Layout.preferredWidth: 150
+                Layout.preferredHeight: 32
+                radius: Tokens.radiusMd
+                visible: provisioning.desktopUpdateAvailable
+                color: Tokens.themeAccent
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Update to %1").arg(provisioning.desktopLatest)
+                    color: "black"
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                    font.bold: true
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: !provisioning.busy
+                    onClicked: provisioning.applyDesktopUpdate(provisioning.desktopExecutable)
+                }
+            }
+        }
     }
 
     FileDialog {

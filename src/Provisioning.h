@@ -29,6 +29,9 @@ class Provisioning : public QObject {
     Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY changed)
     Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY changed)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY changed)
+    Q_PROPERTY(QString desktopExecutable READ desktopExecutable CONSTANT)
+    Q_PROPERTY(QString desktopLatest READ desktopLatest NOTIFY changed)
+    Q_PROPERTY(bool desktopUpdateAvailable READ desktopUpdateAvailable NOTIFY changed)
 public:
     explicit Provisioning(QObject *parent = nullptr);
 
@@ -45,6 +48,9 @@ public:
     QString latestVersion() const { return m_latestVersion; }
     bool updateAvailable() const;
     QString statusMessage() const { return m_status; }
+    QString desktopExecutable() const;
+    QString desktopLatest() const { return m_desktopLatest; }
+    bool desktopUpdateAvailable() const;
 
     Q_INVOKABLE void probe(const QString &serverUrl);
     Q_INVOKABLE void checkForUpdates();
@@ -60,11 +66,23 @@ public:
     Q_INVOKABLE void uninstallOwned();
     Q_INVOKABLE void fixMediaPermissions(const QString &path);
 
+    // Desktop self-update (manual apply only, never automatic). The check
+    // reads the latest lain-desktop tag; apply downloads the AppImage for
+    // this arch, verifies its sha256 sidecar, swaps it over targetPath,
+    // and refreshes the launcher icon. The running process keeps its own
+    // inode, so the update takes effect on next launch.
+    Q_INVOKABLE void checkDesktopUpdates();
+    Q_INVOKABLE void applyDesktopUpdate(const QString &targetPath);
+    static int compareVersions(const QString &a, const QString &b);
+    static QString desktopAssetUrl(const QString &tag);
+
     // Test seam: redirect HOME-based paths under base and record external
     // commands instead of executing them. Never called by production UI.
     void enableTestMode(const QString &base);
     QStringList executedCommands() const { return m_commands; }
     void clearExecuted() { m_commands.clear(); }
+    // Visible for tests: install an already-verified AppImage file.
+    bool installDesktopFile(const QString &sourcePath, const QString &targetPath);
 
 signals:
     void changed();
@@ -122,6 +140,7 @@ private:
     QString m_ownedVersion;
     QString m_latestVersion;
     QString m_status;
+    QString m_desktopLatest;
 
     QString m_testBase;
     QStringList m_commands;

@@ -14,3 +14,4 @@ CMakeUserPresets.json
 # agent session tooling (never commit)
 .opencode/
 opencode.json
+build-debug/

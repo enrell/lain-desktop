@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-11
+
+### Added
+- Desktop self-update: Settings/About checks the latest release and
+  applies AppImage updates with checksum verification and launcher
+  icon refresh. Manual apply only, restart to take effect.
+- `--version` and `--help` flags.
+
+### Fixed
+- AppImage ships native Wayland platform plugins instead of forcing
+  XWayland through a foreign GL stack.
+- Release packaging runs a headless smoke boot that fails the build
+  on packaging crashes.
+- Confirmation dialog no longer anchors inside layouts.
+
 ## [0.2.0] - 2026-09-11
 
 ### Added
