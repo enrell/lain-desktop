@@ -45,3 +45,5 @@ Update this file when the user answers a `needs-user` question.
 - `DD-029` — Media identity v2 uses content/library-based stable IDs that survive move/rename, with an alias/migration map for existing path-derived IDs under a versioned contract. Source: user answer QQ-S4-03, 2026-09-11.
 - `DD-030` — Series navigation groups file episodes into a series/season/episode hierarchy with a Specials section. Source: user answer QQ-S4-04, 2026-09-11.
 - `DD-031` — Playback auto-resumes saved position and autoplays the next episode; defaults live in Settings/Playback plus a per-series toggle. Source: user answer QQ-S4-05, 2026-09-11.
+- `DD-032` — Failed progress writes queue last-position-per-item (persisted, bounded) and flush on reconnect with queued-client-wins. Source: user answer QQ-S5-01, 2026-09-11.
+- `DD-033` — Closing hardening is request timeouts/retries, input validation, and log hygiene; permission checks stay frozen at DD-022 and navigation, resume behavior, API compatibility, and the offscreen suite remain untouched. Source: user answer QQ-S5-02, 2026-09-11.
