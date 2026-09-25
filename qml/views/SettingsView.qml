@@ -659,10 +659,11 @@ ColumnLayout {
     }
 
     // --------------------------------------------------------------- maintenance
+    // Scan and backup need the admin role; the enrichment toggle is a
+    // per-client setting, so the section itself stays visible to everyone.
     ColumnLayout {
         Layout.fillWidth: true
         spacing: 10
-        visible: root.isAdmin
         Text {
             text: qsTr("Maintenance")
             color: Tokens.textPrimary
@@ -672,6 +673,7 @@ ColumnLayout {
         }
         Text {
             Layout.fillWidth: true
+            visible: root.isAdmin
             text: root.scanLabel()
             color: Tokens.textSecondary
             font.family: Tokens.fontFamily
@@ -679,15 +681,59 @@ ColumnLayout {
         }
         Text {
             Layout.fillWidth: true
-            visible: server.adminStatus !== ""
+            visible: root.isAdmin && server.adminStatus !== ""
             text: server.adminStatus
             color: Tokens.themeAccent
             font.family: Tokens.fontFamily
             font.pixelSize: Tokens.metaSize
             wrapMode: Text.WordWrap
         }
+        Text {
+            Layout.fillWidth: true
+            visible: server.pendingEnrichment > 0
+            text: server.pendingEnrichment === 1 ? qsTr("1 item left to enrich")
+                                                 : qsTr("%1 items left to enrich").arg(server.pendingEnrichment)
+            color: Tokens.textTertiary
+            font.family: Tokens.fontFamily
+            font.pixelSize: Tokens.metaSize
+        }
+        RowLayout {
+            spacing: 8
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Enrich new items automatically")
+                color: Tokens.textSecondary
+                font.family: Tokens.fontFamily
+                font.pixelSize: Tokens.metaSize
+            }
+            Repeater {
+                model: [
+                    { id: true, label: qsTr("On") },
+                    { id: false, label: qsTr("Off") }
+                ]
+                delegate: Rectangle {
+                    Layout.preferredWidth: 60
+                    Layout.preferredHeight: 30
+                    radius: Tokens.radiusPill
+                    color: server.autoEnrich === modelData.id
+                        ? Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.16))
+                        : Tokens.surface1
+                    border.color: server.autoEnrich === modelData.id
+                        ? Qt.alpha(Tokens.themeAccent, 0.5) : Tokens.borderSubtle
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: server.autoEnrich === modelData.id ? Tokens.themeAccent : Tokens.textSecondary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: Tokens.metaSize
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: server.setAutoEnrich(modelData.id) }
+                }
+            }
+        }
         RowLayout {
             spacing: 10
+            visible: root.isAdmin
             Rectangle {
                 Layout.preferredWidth: 130
                 Layout.preferredHeight: 34

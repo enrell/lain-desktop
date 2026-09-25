@@ -4,3 +4,4 @@
 [tools]
 cmake = "4.4.3"
 ninja = "1.13.2"
+just = "1.58.0"

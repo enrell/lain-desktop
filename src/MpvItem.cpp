@@ -56,7 +56,10 @@ public:
         auto *fbo = framebufferObject();
         mpv_opengl_fbo mpfbo{(int)fbo->handle(), fbo->width(), fbo->height(),
                              0};
-        int flip = 1;
+        // No flip: Qt Quick samples the FBO as a texture (normal orientation).
+        // FLIP_Y is only for the OpenGL default framebuffer. A 1 here shows
+        // every video upside down.
+        int flip = 0;
         mpv_render_param params[] = {
             {MPV_RENDER_PARAM_OPENGL_FBO, &mpfbo},
             {MPV_RENDER_PARAM_FLIP_Y, &flip},

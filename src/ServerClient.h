@@ -58,6 +58,8 @@ class ServerClient : public QObject {
     Q_PROPERTY(QVariantList series READ series NOTIFY catalogChanged)
     Q_PROPERTY(bool autoResume READ autoResume WRITE setAutoResume NOTIFY playbackSettingsChanged)
     Q_PROPERTY(bool autoplayNext READ autoplayNext WRITE setAutoplayNext NOTIFY playbackSettingsChanged)
+    Q_PROPERTY(bool autoEnrich READ autoEnrich WRITE setAutoEnrich NOTIFY metadataSettingsChanged)
+    Q_PROPERTY(int pendingEnrichment READ pendingEnrichment NOTIFY enrichQueueChanged)
 
     Q_PROPERTY(QVariantMap currentMedia READ currentMedia NOTIFY currentMediaChanged)
     Q_PROPERTY(bool loadingItem READ loadingItem NOTIFY currentMediaChanged)
@@ -101,6 +103,9 @@ public:
     void setAutoResume(bool resume);
     bool autoplayNext() const { return m_autoplayNext; }
     void setAutoplayNext(bool next);
+    bool autoEnrich() const { return m_autoEnrich; }
+    void setAutoEnrich(bool enrich);
+    int pendingEnrichment() const;
 
     QVariantMap currentMedia() const { return m_currentMedia; }
     bool loadingItem() const { return m_loadingItem; }
@@ -163,6 +168,8 @@ signals:
     void pluginsChanged();
     void adminChanged();
     void playbackSettingsChanged();
+    void metadataSettingsChanged();
+    void enrichQueueChanged();
     void currentMediaChanged();
     void playbackErrorChanged();
     void progressQueueChanged();
@@ -263,6 +270,16 @@ private:
     bool m_autoResume = true;
     bool m_autoplayNext = true;
     QVariantMap m_seriesAutoplay; // series id -> default|on|off
+
+    // Automatic enrichment chain (default on): sequential Auto-provider
+    // enrichment of overlay-less items. Items the user explicitly
+    // removed stay removed (m_noAuto opt-out list).
+    bool m_autoEnrich = true;
+    bool m_autoRunning = false;
+    QSet<QString> m_noAuto;
+    static constexpr int kNoAutoCap = 500;
+    void startAutoEnrich();
+    void autoEnrichNext();
 
     QVariantMap m_currentMedia;
     bool m_loadingItem = false;

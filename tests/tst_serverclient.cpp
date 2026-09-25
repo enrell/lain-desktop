@@ -277,8 +277,35 @@ private slots:
                  QStringList({QStringLiteral("lain-metadata-anilist"), QStringLiteral("lain-metadata-nfo")}));
     }
 
-    void queuesFailedProgressAndFlushesClientWins() {
+    void autoEnrichFillsMissingOverlays() {
+        m_stub->skipEnrichmentFor = QStringLiteral("show-2");
         QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->shows().size(), 2);
+        QTRY_VERIFY(findCard(m_client->shows(), QStringLiteral("show-2"))
+                        .value("enriched")
+                        .toBool());
+        bool posted = false;
+        for (const auto &req : m_stub->requests) {
+            if (req.first == QLatin1String("POST")
+                && req.second == QLatin1String("/api/catalog/show-2/enrich"))
+                posted = true;
+        }
+        QVERIFY(posted);
+    }
+
+    void autoEnrichOffSkipsMissingOverlays() {
+        m_stub->skipEnrichmentFor = QStringLiteral("show-2");
+        m_client->setAutoEnrich(false);
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->shows().size(), 2);
+        QTest::qWait(500);
+        QVERIFY(!findCard(m_client->shows(), QStringLiteral("show-2")).value("enriched").toBool());
+        for (const auto &req : m_stub->requests)
+            QVERIFY(!(req.first == QLatin1String("POST")
+                      && req.second == QLatin1String("/api/catalog/show-2/enrich")));
+    }
+
+    void queuesFailedProgressAndFlushesClientWins() {        QVERIFY(startReadyClient());
         QTRY_COMPARE(m_client->movies().size(), 1);
         m_stub->progressPuts.clear();
         m_stub->failProgress = true;

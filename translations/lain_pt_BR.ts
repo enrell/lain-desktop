@@ -756,8 +756,16 @@
 <context>
     <name>SettingsView</name>
     <message>
+        <source>%1 items left to enrich</source>
+        <translation>%1 itens para enriquecer</translation>
+    </message>
+    <message>
         <source>%1 queued updates</source>
         <translation>%1 atualizações na fila</translation>
+    </message>
+    <message>
+        <source>1 item left to enrich</source>
+        <translation>1 item para enriquecer</translation>
     </message>
     <message>
         <source>1 queued update</source>
@@ -838,6 +846,10 @@
     <message>
         <source>Enable</source>
         <translation>Ativar</translation>
+    </message>
+    <message>
+        <source>Enrich new items automatically</source>
+        <translation>Enriquecer novos itens automaticamente</translation>
     </message>
     <message>
         <source>Filesystem path</source>

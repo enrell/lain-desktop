@@ -20,6 +20,7 @@ class StubServer : public QObject {
     Q_PROPERTY(QString token MEMBER token)
 public:
     explicit StubServer(QObject *parent = nullptr);
+    ~StubServer();
 
     bool listen();
     QString baseUrl() const;
@@ -31,6 +32,7 @@ public:
     QString password = QStringLiteral("password123");
     bool paginateOneByOne = false;
     bool failProgress = false;
+    QString skipEnrichmentFor;
     quint64 compositionGeneration = 1;
     QStringList metadataOrder = {QStringLiteral("lain-metadata-nfo"),
                                  QStringLiteral("lain-metadata-anilist")};

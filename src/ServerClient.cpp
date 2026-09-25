@@ -43,10 +43,15 @@ ServerClient::ServerClient(QObject *parent) : QObject(parent) {
     m_autoResume = settings.value(QStringLiteral("playback/auto_resume"), true).toBool();
     m_autoplayNext = settings.value(QStringLiteral("playback/autoplay_next"), true).toBool();
     m_seriesAutoplay = settings.value(QStringLiteral("playback/series_autoplay")).toMap();
-    loadQueue();
-    if (!m_queued.isEmpty())
+    m_autoEnrich = settings.value(QStringLiteral("metadata/auto_enrich"), true).toBool();
+    for (const QString &id : settings.value(QStringLiteral("metadata/no_auto")).toStringList())
+        m_noAuto.insert(id);
+    loadQueue();    if (!m_queued.isEmpty())
         emit progressQueueChanged();
-}
+    connect(this, &ServerClient::enrichStatusChanged, this, [this] {
+        if (m_enrichStatus == QLatin1String("idle"))
+            autoEnrichNext();
+    });}
 
 // --------------------------------------------------------------- session/state
 
@@ -277,30 +282,55 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
                                const QUrlQuery &query, bool auth, JsonCallback cb) {
     // DD-033: idempotent reads retry once on transport errors; mutations
     // never retry (progress has its own offline queue, admin ops confirm).
-    auto send = std::make_shared<std::function<void(int)>>();
-    *send = [this, method, path, body, query, auth, cb, send](int attempt) {
-        QNetworkRequest request(apiUrl(path, query));
+    // Lifetime without cycles: the in-flight reply (then the pending retry
+    // timer) owns the exchange strongly, while the sender itself is only
+    // ever held weakly. Everything frees when the exchange completes, and
+    // destroying the client cancels anything outstanding.
+    struct Exchange {
+        QString method;
+        QString path;
+        QJsonObject body;
+        QUrlQuery query;
+        bool auth = false;
+        JsonCallback cb;
+        int attempt = 0;
+        std::function<void()> fire;
+    };
+    auto ex = std::make_shared<Exchange>();
+    ex->method = method;
+    ex->path = path;
+    ex->body = body;
+    ex->query = query;
+    ex->auth = auth;
+    ex->cb = std::move(cb);
+    std::weak_ptr<Exchange> weak = ex;
+    ex->fire = [this, weak] {
+        auto locked = weak.lock();
+        if (!locked)
+            return;
+        std::shared_ptr<Exchange> current = std::move(locked);
+        QNetworkRequest request(apiUrl(current->path, current->query));
         request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
         request.setTransferTimeout(20000);
-        if (auth && !m_token.isEmpty())
+        if (current->auth && !m_token.isEmpty())
             request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
 
-        const QByteArray payload = body.isEmpty() ? QByteArray()
-                                                  : QJsonDocument(body).toJson(QJsonDocument::Compact);
+        const QByteArray payload = current->body.isEmpty() ? QByteArray()
+                                                           : QJsonDocument(current->body).toJson(QJsonDocument::Compact);
         QNetworkReply *reply = nullptr;
-        if (method == QLatin1String("POST"))
+        if (current->method == QLatin1String("POST"))
             reply = m_net->post(request, payload);
-        else if (method == QLatin1String("PUT"))
+        else if (current->method == QLatin1String("PUT"))
             reply = m_net->put(request, payload);
-        else if (method == QLatin1String("PATCH"))
+        else if (current->method == QLatin1String("PATCH"))
             reply = m_net->sendCustomRequest(request, "PATCH", payload);
-        else if (method == QLatin1String("DELETE"))
+        else if (current->method == QLatin1String("DELETE"))
             reply = m_net->deleteResource(request);
         else
             reply = m_net->get(request);
 
         connect(reply, &QNetworkReply::finished, this,
-                [this, reply, auth, cb, send, attempt, method, path, body, query] {
+                [this, reply, current] {
                     reply->deleteLater();
                     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
                     const QByteArray data = reply->readAll();
@@ -309,17 +339,19 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
                     if (!data.isEmpty())
                         doc = QJsonDocument::fromJson(data);
 
-                    if (networkError && status == 0 && method == QLatin1String("GET") && attempt == 0) {
-                        QTimer::singleShot(1000, this, [send] { (*send)(1); });
+                    if (networkError && status == 0 && current->method == QLatin1String("GET")
+                        && current->attempt == 0) {
+                        current->attempt = 1;
+                        QTimer::singleShot(1000, this, [current] { current->fire(); });
                         return;
                     }
 
-                    if (status == 401 && auth) {
+                    if (status == 401 && current->auth) {
                         clearSession();
                         setState(QStringLiteral("login"));
                         setError(tr("Session expired. Sign in again."));
-                        if (cb)
-                            cb(false, status, doc, QStringLiteral("unauthorized"));
+                        if (current->cb)
+                            current->cb(false, status, doc, QStringLiteral("unauthorized"));
                         return;
                     }
 
@@ -327,15 +359,15 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
                         const QString fallback = networkError && !reply->errorString().isEmpty()
                                                      ? reply->errorString()
                                                      : tr("Request failed (%1)").arg(status);
-                        if (cb)
-                            cb(false, status, doc, errorFrom(doc, fallback));
+                        if (current->cb)
+                            current->cb(false, status, doc, errorFrom(doc, fallback));
                         return;
                     }
-                    if (cb)
-                        cb(true, status, doc, QString());
+                    if (current->cb)
+                        current->cb(true, status, doc, QString());
                 });
     };
-    (*send)(0);
+    ex->fire();
 }
 
 // --------------------------------------------------------------------- catalog
@@ -479,7 +511,9 @@ void ServerClient::rebuildCatalog() {
     m_shows = shows;
     buildSeries();
     emit catalogChanged();
+    emit enrichQueueChanged();
     rebuildCollections();
+    startAutoEnrich();
 }
 
 QString ServerClient::seriesTitleFor(const QVariantMap &card) {
@@ -1037,6 +1071,9 @@ void ServerClient::enrichItem(const QString &id, const QString &provider) {
                     if (!ok) {
                         setError(status == 403 ? tr("Only administrators can enrich metadata.")
                                                : err);
+                        // Attempted: never retry the same item in a loop.
+                        m_enrichKnown.insert(id);
+                        emit enrichQueueChanged();
                         return;
                     }
                     applyEnrichment(id, doc.object());
@@ -1059,13 +1096,73 @@ void ServerClient::removeEnrichment(const QString &id) {
                     }
                     m_enrichment.remove(id);
                     m_enrichKnown.insert(id);
+                    // Explicit removal opts out of auto-enrichment (persisted).
+                    QStringList denied =
+                        QSettings().value(QStringLiteral("metadata/no_auto")).toStringList();
+                    denied.removeAll(id);
+                    denied << id;
+                    while (denied.size() > kNoAutoCap)
+                        denied.takeFirst();
+                    QSettings().setValue(QStringLiteral("metadata/no_auto"), denied);
+                    m_noAuto.clear();
+                    for (const QString &kept : denied)
+                        m_noAuto.insert(kept);
                     rebuildItemViews(id);
                 });
+}
+
+// Automatic enrichment (default behavior): after every catalog rebuild,
+// walk items lacking an overlay and enrich them one at a time with the
+// Auto provider. Sequential so provider APIs are never hammered, capped
+// per session as a backstop, skippable via setAutoEnrich(false).
+void ServerClient::setAutoEnrich(bool enrich) {
+    if (m_autoEnrich == enrich)
+        return;
+    m_autoEnrich = enrich;
+    QSettings().setValue(QStringLiteral("metadata/auto_enrich"), enrich);
+    emit metadataSettingsChanged();
+    emit enrichQueueChanged();
+    startAutoEnrich();
+}
+
+int ServerClient::pendingEnrichment() const {
+    int n = 0;
+    for (const QVariant &v : m_catalog) {
+        if (!m_enrichment.contains(v.toMap().value("id").toString()))
+            ++n;
+    }
+    return n;
+}
+
+void ServerClient::startAutoEnrich() {
+    if (m_autoRunning || !m_autoEnrich || !ready())
+        return;
+    m_autoRunning = true;
+    autoEnrichNext();
+}
+
+void ServerClient::autoEnrichNext() {
+    if (!m_autoRunning)
+        return;
+    if (!m_autoEnrich || !ready() || m_enrichStatus != QLatin1String("idle")) {
+        m_autoRunning = false;
+        return;
+    }
+    for (const QVariant &v : m_catalog) {
+        const QString id = v.toMap().value("id").toString();
+        if (!id.isEmpty() && !m_enrichment.contains(id) && !m_noAuto.contains(id)) {
+            enrichItem(id, QString());
+            return;
+        }
+    }
+    m_autoRunning = false;
+    emit enrichQueueChanged();
 }
 
 void ServerClient::applyEnrichment(const QString &id, const QJsonObject &overlay) {
     m_enrichment.insert(id, overlay.toVariantMap());
     m_enrichKnown.insert(id);
+    emit enrichQueueChanged();
     rebuildItemViews(id);
 }
 

@@ -182,6 +182,20 @@ QString StubServer::baseUrl() const {
     return QStringLiteral("http://127.0.0.1:%1").arg(m_server.serverPort());
 }
 
+StubServer::~StubServer() {
+    // Tear down accepted sockets while m_buffers is still alive. Without
+    // this, member destruction order kills the buffer map first and the
+    // sockets' disconnected() handlers then touch it mid-teardown
+    // (intermittent exit segfault in every suite using the stub).
+    m_server.close();
+    const QList<QTcpSocket *> sockets = m_buffers.keys();
+    for (QTcpSocket *socket : sockets) {
+        QObject::disconnect(socket, nullptr, this, nullptr);
+        delete socket;
+    }
+    m_buffers.clear();
+}
+
 void StubServer::reset() {
     requests.clear();
     progressPuts.clear();
@@ -458,6 +472,8 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
     if (method == QLatin1String("GET") && path == QLatin1String("/api/enrichments")) {
         QJsonArray items;
         for (const QString &id : query.queryItemValue("ids").split(QLatin1Char(','))) {
+            if (id == skipEnrichmentFor)
+                continue;
             const QJsonObject overlay = enrichmentFor(id);
             if (!overlay.isEmpty())
                 items.append(overlay);
