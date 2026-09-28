@@ -2,8 +2,9 @@ import QtQuick
 import QtTest
 import Lain
 
-// Series hierarchy (DD-030): shows browse as series/season/episode
-// blocks with a Specials section for unnumbered items.
+// Series hierarchy (DD-030): the unified library shows one poster per
+// multi-episode series, and the series page groups episodes by season
+// with an explicit Specials section.
 TestCase {
     id: testCase
     name: "SeriesHierarchy"
@@ -17,6 +18,10 @@ TestCase {
     Component {
         id: libraryComponent
         LibraryView {}
+    }
+    Component {
+        id: seriesComponent
+        SeriesView { width: 1200 }
     }
 
     function init() {
@@ -41,14 +46,28 @@ TestCase {
         ensureReady();
         tryVerify(() => server.series.length === 1);
         const view = createTemporaryObject(libraryComponent, host, {
-            title: "Shows",
-            items: server.shows,
-            seriesModel: server.series,
-            showSeries: true
+            seriesModel: server.series
         });
         verify(view);
-        const repeater = findChild(view, "seriesRepeater");
+        const repeater = findChild(view, "showsRepeater");
         verify(repeater !== null);
         compare(repeater.count, 1);
+    }
+
+    function test_series_view_lists_seasons_and_specials() {
+        ensureReady();
+        tryVerify(() => server.series.length === 1);
+        const series = server.series[0];
+        const view = createTemporaryObject(seriesComponent, host, { series: series });
+        verify(view);
+        // The stub groups several files under one title; numbered episodes
+        // and specials partition the total (DD-030).
+        const total = series.episodeCount + series.specialsCount;
+        verify(total >= 2);
+        var seasonSum = 0;
+        for (var i = 0; i < series.seasons.length; ++i)
+            seasonSum += series.seasons[i].episodes.length;
+        compare(seasonSum, series.episodeCount);
+        compare(series.specials.length, series.specialsCount);
     }
 }

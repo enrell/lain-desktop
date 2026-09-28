@@ -11,13 +11,12 @@ ColumnLayout {
     id: root
     spacing: 16
 
-    signal searchRequested(string text)
-    signal account()
     signal loggedOut()
 
     readonly property var libraries: server.libraries || []
     readonly property bool isAdmin: server.ready && server.role === "admin"
     property var pendingConfirm: null
+    property string newLibType: "movie"
 
     function stateLabel() {
         switch (server.state) {
@@ -66,18 +65,23 @@ ColumnLayout {
         return qsTr("Scan idle.");
     }
 
-    PageHeader {
-        eyebrow: qsTr("SYSTEM")
-        onSearchRequested: t => searchRequested(t)
-        onAccount: account()
-    }
-    Text {
-        objectName: "settingsTitle"
-        text: qsTr("Settings")
-        color: Tokens.textPrimary
-        font.family: Tokens.fontFamily
-        font.pixelSize: Tokens.pageTitleSize
-        font.weight: Font.DemiBold
+    ColumnLayout {
+        spacing: 4
+        Text {
+            objectName: "settingsTitle"
+            text: qsTr("Settings")
+            color: Tokens.textPrimary
+            font.family: Tokens.fontSans
+            font.pixelSize: Tokens.pageTitleSize - 6
+            font.weight: Font.DemiBold
+            font.letterSpacing: -0.4
+        }
+        Text {
+            text: isAdmin ? qsTr("Account, server and composition controls.") : qsTr("Your account.")
+            color: Tokens.textTertiary
+            font.family: Tokens.fontSans
+            font.pixelSize: Tokens.metaSize + 1
+        }
     }
 
     // ---------------------------------------------------------------- connection
@@ -260,7 +264,6 @@ ColumnLayout {
             }
         }
         // Admin library creation (name, type, filesystem path).
-        property string newLibType: "movie"
         RowLayout {
             Layout.fillWidth: true
             spacing: 8

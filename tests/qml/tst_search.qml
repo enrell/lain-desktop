@@ -2,10 +2,10 @@ import QtQuick
 import QtTest
 import Lain
 
-// Asynchronous debounced search in the client plus overlay state.
+// Asynchronous debounced search in the client plus the search page state.
 TestCase {
     id: testCase
-    name: "SearchOverlay"
+    name: "SearchView"
     visible: true
     width: 1280
     height: 900
@@ -14,8 +14,8 @@ TestCase {
     property Item host
 
     Component {
-        id: overlayComponent
-        SearchOverlay {}
+        id: pageComponent
+        SearchView { width: 1200 }
     }
 
     function init() {
@@ -39,10 +39,10 @@ TestCase {
 
     function test_searches_the_server() {
         ensureReady();
-        const overlay = createTemporaryObject(overlayComponent, host);
-        verify(overlay);
+        const view = createTemporaryObject(pageComponent, host);
+        verify(view);
 
-        overlay.openWith("frieren");
+        view.openWith("frieren");
         tryVerify(() => server.searchResults.length === 2);
         verify(!server.searching);
 
@@ -50,7 +50,5 @@ TestCase {
         const first = server.searchResults[0];
         compare(first.year, 2023);
         compare(first.genre, "Adventure");
-
-        overlay.visible = false;
     }
 }

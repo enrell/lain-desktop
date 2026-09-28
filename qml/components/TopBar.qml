@@ -1,0 +1,227 @@
+import QtQuick
+import QtQuick.Layouts
+import Lain
+
+// Top header matching the web AppShell: logo left, centered nav links,
+// server status + account menu on the right.
+Rectangle {
+    id: bar
+    height: Tokens.headerHeight
+    color: Qt.alpha(Tokens.bgPrimary, 0.88)
+    border.color: Qt.alpha(Tokens.themeFg, 0.05)
+
+    property string current: "home"
+    signal navigate(string route)
+    signal logout()
+    signal account()
+
+    readonly property var links: [
+        { route: "home", label: qsTr("Home") },
+        { route: "library", label: qsTr("Library") },
+        { route: "search", label: qsTr("Search") },
+        { route: "settings", label: qsTr("Settings") }
+    ]
+
+    // Detail/series pages light up "Library" like the web nav does for
+    // /item/* routes.
+    function navActive(route) {
+        if (route === "library")
+            return current === "library" || current === "series" || current === "detail";
+        return current === route;
+    }
+
+    // Three-column grid: brand | centered nav | status+account.
+    Item {
+        anchors.fill: parent
+        anchors.leftMargin: Math.max(Tokens.pageMargin, (bar.width - Tokens.contentWidth) / 2)
+        anchors.rightMargin: anchors.leftMargin
+
+        RowLayout {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 10
+            Rectangle {
+                width: 18; height: 18; radius: 5
+                color: "transparent"
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 4; height: 14; radius: 2
+                    color: Tokens.themeAccent
+                    rotation: -20
+                }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 14; height: 4; radius: 2
+                    color: Tokens.themeAccent
+                    rotation: -20
+                }
+            }
+            Text {
+                text: "lain"
+                color: Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: 16
+                font.weight: Font.Bold
+                font.letterSpacing: 4
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: bar.navigate("home")
+            }
+        }
+
+        RowLayout {
+            anchors.centerIn: parent
+            spacing: 32
+            Repeater {
+                model: bar.links
+                delegate: Text {
+                    text: modelData.label
+                    color: bar.navActive(modelData.route) ? Tokens.textPrimary : Tokens.textTertiary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: 13
+                    font.letterSpacing: 0.4
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -8
+                        hoverEnabled: true
+                        onEntered: if (!bar.navActive(modelData.route)) parent.color = Tokens.textSecondary
+                        onExited: parent.color = bar.navActive(modelData.route) ? Tokens.textPrimary : Tokens.textTertiary
+                        onClicked: bar.navigate(modelData.route)
+                    }
+                    Accessible.name: modelData.label
+                }
+            }
+        }
+
+        RowLayout {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 16
+
+            // Server status indicator.
+            RowLayout {
+                spacing: 8
+                Rectangle {
+                    width: 6; height: 6; radius: 3
+                    color: server.ready ? Tokens.themeAccent : Tokens.themeUrgent
+                }
+                Text {
+                    text: server.state === "ready" ? qsTr("online") : server.state
+                    color: Tokens.textTertiary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 1.4
+                    font.capitalization: Font.AllUppercase
+                }
+            }
+
+            // Account avatar opens the dropdown menu.
+            Rectangle {
+                id: avatar
+                Layout.preferredWidth: 30
+                Layout.preferredHeight: 30
+                radius: 15
+                color: Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.15))
+                border.color: Qt.alpha(Tokens.themeAccent, 0.4)
+                Text {
+                    anchors.centerIn: parent
+                    text: String(server.username || "?").charAt(0).toUpperCase()
+                    color: Tokens.themeAccent
+                    font.family: Tokens.fontSans
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: menu.visible = !menu.visible
+                }
+                Accessible.name: qsTr("Account menu")
+            }
+        }
+    }
+
+    // Account dropdown (avatar, username, account, sign out).
+    Rectangle {
+        id: menu
+        visible: false
+        x: parent.width - width - Math.max(Tokens.pageMargin, (bar.width - Tokens.contentWidth) / 2)
+        y: bar.height + 6
+        width: 220
+        height: menuCol.implicitHeight + 12
+        radius: Tokens.radiusMd
+        color: Tokens.bgElevated
+        border.color: Tokens.borderSubtle
+        z: 60
+
+        ColumnLayout {
+            id: menuCol
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 2
+
+            Text {
+                Layout.leftMargin: 10
+                Layout.topMargin: 6
+                Layout.bottomMargin: 6
+                text: server.username || ""
+                color: Tokens.textTertiary
+                font.family: Tokens.fontSans
+                font.pixelSize: 12
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: Tokens.borderSubtle }
+
+            Repeater {
+                model: [
+                    { label: qsTr("Account"), route: "settings" }
+                ]
+                delegate: Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    radius: 8
+                    color: "transparent"
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.label
+                        color: Tokens.textPrimary
+                        font.family: Tokens.fontSans
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: parent.color = Tokens.hoverFill
+                        onExited: parent.color = "transparent"
+                        onClicked: { menu.visible = false; bar.navigate(modelData.route); }
+                    }
+                }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: Tokens.borderSubtle }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 36
+                radius: 8
+                color: "transparent"
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Sign out")
+                    color: Tokens.themeUrgent
+                    font.family: Tokens.fontSans
+                    font.pixelSize: 13
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onEntered: parent.color = Qt.alpha(Tokens.themeUrgent, 0.1)
+                    onExited: parent.color = "transparent"
+                    onClicked: { menu.visible = false; bar.logout(); }
+                }
+            }
+        }
+    }
+}

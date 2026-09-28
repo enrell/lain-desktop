@@ -11,6 +11,7 @@ Item {
     Layout.preferredHeight: Math.max(620, page.height)
 
     property var media
+    property var series: null
     property bool hasStream: false
     property bool controlsVisible: true
     property string osdText: ""
@@ -21,6 +22,48 @@ Item {
 
     signal toggleFullscreen()
     signal back()
+    signal playMedia(var media)
+
+    // Web parity: series playback keeps an episode rail on the right when
+    // the window is wide enough (hidden in fullscreen).
+    readonly property var seriesEpisodes: {
+        if (!series)
+            return [];
+        var out = [];
+        var seasons = series.seasons || [];
+        for (var i = 0; i < seasons.length; ++i) {
+            var eps = seasons[i].episodes || [];
+            for (var j = 0; j < eps.length; ++j)
+                out.push(eps[j]);
+        }
+        var sp = series.specials || [];
+        for (var k = 0; k < sp.length; ++k)
+            out.push(sp[k]);
+        return out;
+    }
+    readonly property int sidebarWidth: seriesEpisodes.length > 1 && width >= 1000 ? 320 : 0
+
+    function episodeLabel(it) {
+        if (!it)
+            return "";
+        if (it.season > 0 && it.episode > 0)
+            return "S" + (it.season < 10 ? "0" : "") + it.season + "E" + (it.episode < 10 ? "0" : "") + it.episode;
+        if (it.episode > 0)
+            return qsTr("Episode %1").arg(it.episode);
+        return qsTr("Special");
+    }
+
+    function episodeStatus(it) {
+        if (!it)
+            return "";
+        if (it.missing)
+            return qsTr("Missing from disk");
+        if (it.completed)
+            return qsTr("Watched");
+        if (it.duration_sec > 0 && it.position_sec > 0)
+            return qsTr("Resume at %1%").arg(Math.min(100, Math.round(100 * it.position_sec / it.duration_sec)));
+        return qsTr("Not watched");
+    }
 
     function fmt(s) {
         if (!isFinite(s) || s < 0 || s === null)
@@ -77,6 +120,7 @@ Item {
     MpvItem {
         id: mpv
         anchors.fill: parent
+        anchors.rightMargin: playerRoot.sidebarWidth
     }
 
     Connections {
@@ -148,6 +192,7 @@ Item {
     // Any movement wakes controls; clicking the video toggles pause.
     MouseArea {
         anchors.fill: parent
+        anchors.rightMargin: playerRoot.sidebarWidth
         z: 1
         hoverEnabled: true
         acceptedButtons: Qt.NoButton
@@ -155,6 +200,7 @@ Item {
     }
     MouseArea {
         anchors.fill: parent
+        anchors.rightMargin: playerRoot.sidebarWidth
         z: 2
         onClicked: {
             audioPopup.visible = false;
@@ -180,6 +226,7 @@ Item {
     // OSD central
     Text {
         anchors.centerIn: parent
+        anchors.horizontalCenterOffset: -playerRoot.sidebarWidth / 2
         z: 3
         text: osdText
         color: "white"
@@ -193,6 +240,7 @@ Item {
     // No source: loading, plan error, or diagnostic test pattern.
     Rectangle {
         anchors.fill: parent
+        anchors.rightMargin: playerRoot.sidebarWidth
         z: 4
         color: Qt.alpha(Tokens.bgPrimary, 0.85)
         visible: !hasStream
@@ -285,6 +333,7 @@ Item {
     Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.rightMargin: playerRoot.sidebarWidth
         anchors.top: parent.top
         height: 64
         z: 5
@@ -328,6 +377,7 @@ Item {
     Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.rightMargin: playerRoot.sidebarWidth
         anchors.bottom: parent.bottom
         height: 108
         z: 5
@@ -405,7 +455,7 @@ Item {
         visible: false
         z: 6
         anchors.right: parent.right
-        anchors.rightMargin: 20
+        anchors.rightMargin: playerRoot.sidebarWidth + 20
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 118
         width: 280
@@ -443,7 +493,7 @@ Item {
         visible: false
         z: 6
         anchors.right: parent.right
-        anchors.rightMargin: 20
+        anchors.rightMargin: playerRoot.sidebarWidth + 20
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 118
         width: 280
@@ -480,6 +530,117 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: { mpv.setSubtitleTrack(modelData.id); subPopup.visible = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    // Episode rail for series playback (web player sidebar): still, SxxExx
+    // label, per-episode status. Clicking switches episodes in place.
+    Rectangle {
+        visible: playerRoot.sidebarWidth > 0
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        width: playerRoot.sidebarWidth
+        z: 7
+        color: Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeFg, 0.04))
+        border.color: Qt.alpha(Tokens.themeFg, 0.06)
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 0
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.margins: 16
+                Layout.bottomMargin: 12
+                spacing: 2
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 0 }
+                Text {
+                    Layout.fillWidth: true
+                    text: series ? series.title : ""
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                Text {
+                    text: seriesEpisodes.length === 1
+                        ? qsTr("1 episode") : qsTr("%1 episodes").arg(seriesEpisodes.length)
+                    color: Tokens.textTertiary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: 12
+                }
+            }
+            Rectangle { Layout.fillWidth: true; height: 1; color: Qt.alpha(Tokens.themeFg, 0.06) }
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                model: seriesEpisodes
+                spacing: 2
+                topMargin: 8
+                bottomMargin: 8
+                delegate: Rectangle {
+                    required property var modelData
+                    width: ListView.view ? ListView.view.width : 300
+                    height: 60
+                    color: modelData.id === (playerRoot.media ? playerRoot.media.id : "")
+                        ? Qt.alpha(Tokens.themeFg, 0.05)
+                        : "transparent"
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 12
+                        Rectangle {
+                            Layout.preferredWidth: 80
+                            Layout.preferredHeight: 48
+                            radius: 0
+                            clip: true
+                            color: Tokens.surface1
+                            border.color: Qt.alpha(Tokens.themeFg, 0.06)
+                            opacity: modelData.missing ? 0.5 : 1
+                            Image {
+                                anchors.fill: parent
+                                source: modelData.thumb || modelData.cover || ""
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                                visible: source !== ""
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: playerRoot.episodeLabel(modelData)
+                                color: modelData.id === (playerRoot.media ? playerRoot.media.id : "")
+                                    ? Tokens.themeAccent : Tokens.textTertiary
+                                font.family: Tokens.fontFamily
+                                font.pixelSize: 10
+                                font.capitalization: Font.AllUppercase
+                                font.letterSpacing: 1.4
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: playerRoot.episodeStatus(modelData)
+                                color: modelData.missing ? Tokens.themeUrgent : Tokens.textTertiary
+                                font.family: Tokens.fontSans
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: !modelData.missing && modelData.id !== (playerRoot.media ? playerRoot.media.id : "")
+                        hoverEnabled: true
+                        onEntered: if (modelData.id !== (playerRoot.media ? playerRoot.media.id : "")) parent.color = Qt.alpha(Tokens.themeFg, 0.08)
+                        onExited: parent.color = modelData.id === (playerRoot.media ? playerRoot.media.id : "")
+                            ? Qt.alpha(Tokens.themeFg, 0.05) : "transparent"
+                        onClicked: playerRoot.playMedia(modelData)
                     }
                 }
             }

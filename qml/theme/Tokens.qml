@@ -32,7 +32,10 @@ QtObject {
     readonly property int sectionGap: 48
 
     // Theme font through fontconfig, following `omarchy font set`.
+    // Mono stays for eyebrows, labels, episode tags, and technical values;
+    // content (titles, synopsis, nav, buttons) uses sans like the web UI.
     readonly property string fontFamily: "monospace"
+    readonly property string fontSans: "sans-serif"
 
     readonly property int heroSize: 68
     readonly property int pageTitleSize: 28
@@ -47,6 +50,8 @@ QtObject {
     readonly property int radiusPill: 999
 
     readonly property int navRailWidth: 64
+    readonly property int headerHeight: 80
+    readonly property int contentWidth: 1800
     readonly property int posterWidth: 176
     readonly property int landscapeWidth: 300
     readonly property int buttonHeight: 44

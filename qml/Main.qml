@@ -14,132 +14,154 @@ Window {
 
     property var homeData: server.home
     property var currentMedia: server.currentMedia
+    property var currentSeries: null
     property string route: "home"
     property string returnRoute: "home"
 
-    // Fixed content margin for the collapsed rail; the rail floats above
-    // (z), so expanding never shifts layout and avoids hitbox jitter.
+    // Find the series object a normalized card belongs to (if any).
+    function seriesFor(media) {
+        if (!media || !media.series_id)
+            return null;
+        var sl = server.series || [];
+        for (var i = 0; i < sl.length; ++i)
+            if (sl[i].id === media.series_id)
+                return sl[i];
+        return null;
+    }
+
+    // Web parity: opening an episode of a multi-episode title lands on the
+    // series page; single files land on the item page.
+    function openMedia(m) {
+        server.openMedia(m.id);
+        var s = seriesFor(m);
+        var count = s ? (s.episodeCount || 0) + (s.specialsCount || 0) : 0;
+        root.returnRoute = root.route;
+        if (s && count > 1) {
+            root.currentSeries = s;
+            root.route = "series";
+        } else {
+            root.route = "detail";
+        }
+    }
+
+    function playMedia(m) {
+        server.openMedia(m.id);
+        server.requestPlayback(m.id);
+        root.returnRoute = root.route === "player" ? root.returnRoute : root.route;
+        root.route = "player";
+    }
+
+    // Content scrolls under the fixed top header (web AppShell).
     Flickable {
         id: page
         anchors.fill: parent
-        anchors.leftMargin: Tokens.navRailWidth
+        anchors.topMargin: topBar.visible ? Tokens.headerHeight : 0
         visible: server.ready
         contentWidth: width
-        contentHeight: content.height
+        contentHeight: content.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
         ColumnLayout {
             id: content
             width: parent.width
+            spacing: 0
             HomeView {
                 Layout.fillWidth: true
                 visible: root.route === "home"
                 home: root.homeData
-                onOpenMedia: m => { root.returnRoute = "home"; root.route = "detail"; server.openMedia(m.id); }
-                onPlayMedia: m => { root.returnRoute = "home"; server.openMedia(m.id); server.requestPlayback(m.id); root.route = "player"; }
-                onSearchRequested: t => searchOverlay.openWith(t)
-                onAccount: root.route = "settings"
+                onOpenMedia: m => root.openMedia(m)
+                onPlayMedia: m => root.playMedia(m)
+                onOpenLibrary: id => {
+                    root.route = "library";
+                    libraryView.selectedLibrary = id;
+                }
             }
             LibraryView {
+                id: libraryView
                 Layout.fillWidth: true
-                visible: root.route === "movies" || root.route === "shows"
-                title: root.route === "shows" ? qsTr("Shows") : qsTr("Movies")
-                items: root.route === "shows" ? server.shows : server.movies
-                seriesModel: server.series
-                showSeries: root.route === "shows"
-                onOpenMedia: m => { root.returnRoute = root.route; root.route = "detail"; server.openMedia(m.id); }
-                onSearchRequested: t => searchOverlay.openWith(t)
-                onAccount: root.route = "settings"
+                visible: root.route === "library"
+                onOpenMedia: m => root.openMedia(m)
+                onOpenSeries: s => { root.returnRoute = "library"; root.currentSeries = s; root.route = "series"; }
+            }
+            SearchView {
+                id: searchView
+                Layout.fillWidth: true
+                visible: root.route === "search"
+                onOpenMedia: m => root.openMedia(m)
+            }
+            SeriesView {
+                Layout.fillWidth: true
+                visible: root.route === "series"
+                series: root.currentSeries
+                onPlayMedia: m => root.playMedia(m)
+                onOpenMedia: m => root.openMedia(m)
+                onBack: root.route = root.returnRoute === "series" ? "library" : root.returnRoute
             }
             DetailView {
                 Layout.fillWidth: true
                 visible: root.route === "detail"
                 media: root.currentMedia
-                onOpenMedia: m => { server.openMedia(m.id); }
-                onPlayMedia: m => { server.openMedia(m.id); server.requestPlayback(m.id); root.route = "player"; }
-                onBack: root.route = root.returnRoute
-            }
-            CollectionsView {
-                Layout.fillWidth: true
-                visible: root.route === "collections"
-                collections: server.collections
-                onOpenMedia: m => { root.returnRoute = "collections"; root.route = "detail"; server.openMedia(m.id); }
-                onSearchRequested: t => searchOverlay.openWith(t)
-                onAccount: root.route = "settings"
+                onOpenMedia: m => root.openMedia(m)
+                onPlayMedia: m => root.playMedia(m)
+                onBack: root.route = root.returnRoute === "detail" ? "home" : root.returnRoute
             }
             PlayerView {
                 id: playerView
                 visible: root.route === "player"
                 media: root.currentMedia
+                series: root.currentMedia ? root.seriesFor(root.currentMedia) : null
+                onPlayMedia: m => root.playMedia(m)
                 onToggleFullscreen: root.visibility = root.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
                 onBack: {
-                    root.route = root.returnRoute;
+                    root.route = root.returnRoute === "player" ? "home" : root.returnRoute;
                     server.refresh();
                 }
             }
             SettingsView {
                 visible: root.route === "settings"
                 Layout.fillWidth: true
-                Layout.leftMargin: Tokens.pageMargin
-                Layout.rightMargin: Tokens.pageMargin
-                Layout.topMargin: 8
-                onSearchRequested: t => searchOverlay.openWith(t)
-                onAccount: root.route = "settings"
+                Layout.leftMargin: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
+                Layout.rightMargin: Layout.leftMargin
+                Layout.topMargin: 16
                 onLoggedOut: root.route = "home"
             }
         }
     }
 
-    NavRail {
-        id: navRail
+    TopBar {
+        id: topBar
         anchors.left: parent.left
+        anchors.right: parent.right
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
         z: 10
-        visible: server.ready && root.visibility !== Window.FullScreen
+        visible: server.ready && root.visibility !== Window.FullScreen && root.route !== "player"
         current: root.route
-        onNavigate: r => { root.route = r; }
+        onNavigate: r => {
+            root.route = r;
+            if (r === "search")
+                searchView.focusInput();
+            page.contentY = 0;
+        }
+        onLogout: server.logout()
     }
 
-    // Position-based hover tracking (not edge events): an invisible zone
-    // that never intercepts clicks. Hysteresis 96/230 removes flicker
-    // so rail buttons stay simple buttons.
-    MouseArea {
-        anchors.fill: parent
-        z: 5
+    // Ctrl+F / "/" jump straight to the search page (web parity).
+    Shortcut {
         enabled: server.ready
-        hoverEnabled: true
-        acceptedButtons: Qt.NoButton
-        onPositionChanged: mouse => {
-            if (mouse.x < 96) navRail.expanded = true;
-            else if (mouse.x > 230) navRail.expanded = false;
-        }
+        sequence: "Ctrl+F"
+        onActivated: { root.route = "search"; searchView.focusInput(); }
     }
-
-    // Functional search: Ctrl+F is primary, / is a shortcut.
-    SearchOverlay {
-        id: searchOverlay
-        visible: false
-        onOpenMedia: m => {
-            visible = false;
-            server.clearSearch();
-            root.returnRoute = root.route;
-            root.route = "detail";
-            server.openMedia(m.id);
-        }
-        onClosed: server.clearSearch()
+    Shortcut {
+        enabled: server.ready
+        sequence: "/"
+        onActivated: { root.route = "search"; searchView.focusInput(); }
     }
-
-    Shortcut { enabled: server.ready; sequence: "Ctrl+F"; onActivated: searchOverlay.openWith("") }
-    Shortcut { enabled: server.ready; sequence: "/"; onActivated: searchOverlay.openWith("") }
     Shortcut { enabled: server.ready; sequence: "Alt+Left"; onActivated: root.route = "home" }
     Shortcut {
         sequence: "Esc"
         onActivated: {
             if (root.visibility === Window.FullScreen)
                 root.visibility = Window.Windowed;
-            else if (searchOverlay.visible)
-                searchOverlay.visible = false;
-            else if (root.route === "detail" || root.route === "player")
+            else if (root.route === "detail" || root.route === "player" || root.route === "series")
                 root.route = root.returnRoute;
         }
     }

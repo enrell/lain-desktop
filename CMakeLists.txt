@@ -30,11 +30,13 @@ qt_add_qml_module(lain_core
         qml/theme/Tokens.qml
         qml/theme/Color.js
         qml/theme/Format.js
-        qml/components/PageHeader.qml
-        qml/components/NavRail.qml
+        qml/components/TopBar.qml
+        qml/components/LibrarySelect.qml
         qml/components/MediaRow.qml
         qml/components/PosterCard.qml
         qml/components/LandscapeCard.qml
+        qml/components/ShowCard.qml
+        qml/components/EpisodeCard.qml
         qml/components/PersonCard.qml
         qml/components/PlayerButton.qml
         qml/components/SeekBar.qml
@@ -43,10 +45,10 @@ qt_add_qml_module(lain_core
         qml/views/HomeView.qml
         qml/views/LibraryView.qml
         qml/views/DetailView.qml
-        qml/views/CollectionsView.qml
+        qml/views/SeriesView.qml
+        qml/views/SearchView.qml
         qml/views/PlayerView.qml
         qml/views/SettingsView.qml
-        qml/views/SearchOverlay.qml
         qml/views/LoginView.qml
         qml/views/SetupWizard.qml
 )

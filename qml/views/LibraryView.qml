@@ -3,305 +3,264 @@ import QtQuick.Layouts
 import Lain
 import "../components"
 
-// Dense library grid with genre filters and sorting over the current model.
-// For shows (DD-030), series hierarchy (series/season/episode plus Specials)
-// renders above the flat grid from the series model.
+// Web-parity library: single page with library filter + sort, a Shows
+// section of series cards, a singles poster grid, and collections as an
+// in-page section. Series hierarchy (DD-030) opens on the series route.
 ColumnLayout {
     id: root
-    property string title: qsTr("Movies")
-    property var items: []
+    property var items: server.catalog || []
+    property var seriesModel: server.series || []
+    property var collections: server.collections || []
+    property var libraries: server.libraries || []
     signal openMedia(var media)
+    signal openSeries(var series)
 
-    property var seriesModel: []
-    property bool showSeries: false
+    property string selectedLibrary: ""
+    property string sortMode: "title" // title | recent
 
-    property string selectedGenre: "__all__"
-    property string sortMode: "title" // title | year
-    signal searchRequested(string text)
-    signal account()
+    // A show card only exists when several files share a title; a lone
+    // episode stays a single like the web's group.count === 1 rule.
+    function seriesItemCount(s) {
+        return (s.episodeCount || 0) + (s.specialsCount || 0);
+    }
 
-    readonly property string allLabel: qsTr("All")
-    // Genres come from enrichment data rather than a fixed list.
-    // The "All" entry uses a stable id so locale switches keep selection.
-    readonly property var genres: {
-        var seen = {};
-        var names = [];
-        var list = items || [];
+    function seriesFirstItem(s) {
+        if (s.seasons && s.seasons.length > 0 && s.seasons[0].episodes.length > 0)
+            return s.seasons[0].episodes[0];
+        if (s.specials && s.specials.length > 0)
+            return s.specials[0];
+        return null;
+    }
+
+    readonly property var showsList: {
+        var out = [];
+        var list = seriesModel || [];
         for (var i = 0; i < list.length; ++i) {
-            var g = list[i].genre;
-            if (g && g !== "" && !seen[g]) {
-                seen[g] = true;
-                names.push(g);
-            }
+            var s = list[i];
+            if (selectedLibrary !== "" && s.library_id !== selectedLibrary)
+                continue;
+            if (seriesItemCount(s) > 1)
+                out.push(s);
         }
-        names.sort();
-        var out = [{ id: "__all__", label: allLabel }];
-        for (var j = 0; j < names.length; ++j)
-            out.push({ id: names[j], label: names[j] });
+        if (sortMode === "title")
+            out.sort(function (a, b) { return String(a.title).localeCompare(String(b.title)); });
+        else
+            out.sort(function (a, b) {
+                var fa = seriesFirstItem(a), fb = seriesFirstItem(b);
+                return Number(fb ? fb.updated_at : 0) - Number(fa ? fa.updated_at : 0);
+            });
         return out;
     }
 
-    function computeShown() {
-        var list = (items || []).slice();
-        if (selectedGenre !== "__all__")
-            list = list.filter(m => m.genre === selectedGenre);
+    readonly property var singlesList: {
+        var seriesIds = {};
+        var sl = showsList;
+        for (var i = 0; i < sl.length; ++i)
+            seriesIds[sl[i].id] = true;
+        var out = [];
+        var list = items || [];
+        for (var j = 0; j < list.length; ++j) {
+            var it = list[j];
+            if (selectedLibrary !== "" && it.library_id !== selectedLibrary)
+                continue;
+            var sid = it.series_id;
+            if (sid && seriesIds[sid])
+                continue; // member of a multi-episode show card
+            out.push(it);
+        }
         if (sortMode === "title")
-            list.sort((a, b) => String(a.title).localeCompare(String(b.title)));
-        else if (sortMode === "year")
-            list.sort((a, b) => Number(b.year) - Number(a.year));
-        return list;
+            out.sort(function (a, b) {
+                var ta = a.displayTitle && a.displayTitle !== "" ? a.displayTitle : a.title;
+                var tb = b.displayTitle && b.displayTitle !== "" ? b.displayTitle : b.title;
+                return String(ta).localeCompare(String(tb));
+            });
+        else
+            out.sort(function (a, b) { return Number(b.updated_at) - Number(a.updated_at); });
+        return out;
     }
-    readonly property var shown: computeShown()
+
+    readonly property var libraryOptions: {
+        var out = [{ id: "", label: qsTr("All libraries") }];
+        var libs = libraries || [];
+        for (var i = 0; i < libs.length; ++i)
+            out.push({ id: libs[i].id, label: libs[i].name });
+        return out;
+    }
+
+    readonly property string countsLine: {
+        var total = items ? items.length : 0;
+        var seg = [total === 1 ? qsTr("1 item") : qsTr("%1 items").arg(total)];
+        if (showsList.length > 0)
+            seg.push(showsList.length === 1 ? qsTr("1 show") : qsTr("%1 shows").arg(showsList.length));
+        if (singlesList.length > 0)
+            seg.push(singlesList.length === 1 ? qsTr("1 title") : qsTr("%1 titles").arg(singlesList.length));
+        return seg.join("  ·  ");
+    }
+
+    readonly property var filteredCollections: {
+        if (selectedLibrary === "")
+            return collections || [];
+        var out = [];
+        var cols = collections || [];
+        for (var i = 0; i < cols.length; ++i) {
+            var row = { title: cols[i].title, items: [] };
+            var its = cols[i].items || [];
+            for (var j = 0; j < its.length; ++j)
+                if (its[j].library_id === selectedLibrary)
+                    row.items.push(its[j]);
+            if (row.items.length > 0)
+                out.push(row);
+        }
+        return out;
+    }
 
     spacing: 0
 
-    PageHeader {
-        Layout.topMargin: 8
-        eyebrow: qsTr("LIBRARY")
-        onSearchRequested: t => searchRequested(t)
-        onOpenMedia: m => openMedia(m)
-        onAccount: account()
-    }
-
-    // Title and item count.
-    RowLayout {
+    ColumnLayout {
         Layout.fillWidth: true
-        Layout.leftMargin: Tokens.pageMargin
-        Layout.rightMargin: Tokens.pageMargin
-        Layout.topMargin: 8
-        spacing: 12
-        Text {
-            text: title
-            color: Tokens.textPrimary
-            font.family: Tokens.fontFamily
-            font.pixelSize: Tokens.pageTitleSize
-            font.weight: Font.DemiBold
-        }
-        Text {
-            Layout.alignment: Qt.AlignBottom
-            Layout.bottomMargin: 4
-            text: shown.length === 1 ? qsTr("1 title") : qsTr("%1 titles").arg(shown.length)
-            color: Tokens.textTertiary
-            font.family: Tokens.fontFamily
-            font.pixelSize: Tokens.metaSize
-        }
-    }
+        Layout.leftMargin: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
+        Layout.rightMargin: Layout.leftMargin
+        Layout.topMargin: 16
+        Layout.bottomMargin: Tokens.sectionGap
+        spacing: 20
 
-    // Filters and sorting.
-    RowLayout {
-        Layout.fillWidth: true
-        Layout.leftMargin: Tokens.pageMargin
-        Layout.rightMargin: Tokens.pageMargin
-        Layout.topMargin: 18
-        spacing: 8
-
-        Repeater {
-            model: genres
-            delegate: Rectangle {
-                Layout.preferredHeight: 32
-                Layout.preferredWidth: chipLabel.implicitWidth + 28
-                radius: Tokens.radiusPill
-                color: selectedGenre === modelData.id ? Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.16)) : Tokens.surface1
-                border.color: selectedGenre === modelData.id ? Qt.alpha(Tokens.themeAccent, 0.5) : Tokens.borderSubtle
-                Text {
-                    id: chipLabel
-                    anchors.centerIn: parent
-                    text: modelData.label
-                    color: selectedGenre === modelData.id ? Tokens.themeAccent : Tokens.textSecondary
-                    font.family: Tokens.fontFamily
-                    font.pixelSize: Tokens.metaSize
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: selectedGenre = modelData.id
-                }
+        // Header: title + muted subheading like the web library page.
+        ColumnLayout {
+            spacing: 4
+            Text {
+                text: qsTr("Library")
+                color: Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.pageTitleSize - 6
+                font.weight: Font.DemiBold
+                font.letterSpacing: -0.4
+            }
+            Text {
+                text: qsTr("Shows open their own page with every episode; single files play from their item page.")
+                color: Tokens.textTertiary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize + 1
             }
         }
 
-        Item { Layout.fillWidth: true }
-
-        Text {
-            text: qsTr("Sort")
-            color: Tokens.textTertiary
-            font.family: Tokens.fontFamily
-            font.pixelSize: Tokens.metaSize
-        }
-        Repeater {
-            model: [
-                { key: "title", label: qsTr("Title") },
-                { key: "year", label: qsTr("Year") }
-            ]
-            delegate: Text {
-                text: modelData.label
-                color: sortMode === modelData.key ? Tokens.themeAccent : Tokens.textSecondary
-                font.family: Tokens.fontFamily
-                font.pixelSize: Tokens.metaSize
-                font.bold: sortMode === modelData.key
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: sortMode = modelData.key
-                }
-            }
-        }
-    }
-
-    // Series hierarchy for shows (DD-030): one block per series with
-    // season rows and a Specials section. Episode rows open the episode.
-    Repeater {
-        objectName: "seriesRepeater"
-        model: root.showSeries ? root.seriesModel : []
-        delegate: ColumnLayout {
+        // Filter row: counts left, library + sort selects right.
+        RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: Tokens.pageMargin
-            Layout.rightMargin: Tokens.pageMargin
-            Layout.topMargin: 20
-            spacing: 6
-            property string seriesId: modelData.id
-            property bool expanded: false
-            RowLayout {
+            spacing: 12
+            Text {
                 Layout.fillWidth: true
-                spacing: 10
-                Text {
+                text: countsLine
+                color: Tokens.textTertiary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize + 1
+            }
+            LibrarySelect {
+                model: libraryOptions
+                current: selectedLibrary
+                onPicked: id => selectedLibrary = id
+            }
+            LibrarySelect {
+                model: [
+                    { id: "title", label: qsTr("Title A–Z") },
+                    { id: "recent", label: qsTr("Recently indexed") }
+                ]
+                current: sortMode
+                onPicked: id => sortMode = id
+            }
+        }
+
+        // Shows section: one poster card per multi-episode series.
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: showsList.length > 0
+            spacing: 14
+            Text {
+                text: qsTr("Shows")
+                color: Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+                font.letterSpacing: -0.3
+            }
+            Grid {
+                Layout.fillWidth: true
+                columns: Math.max(2, Math.floor((width + 12) / (Tokens.posterWidth + 12)))
+                columnSpacing: 12
+                rowSpacing: 20
+                Repeater {
+                    objectName: "showsRepeater"
+                    model: showsList
+                    delegate: ShowCard {
+                        series: modelData
+                        onOpen: s => openSeries(s)
+                    }
+                }
+            }
+        }
+
+        // Singles section: movies, lone episodes, and specials.
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: singlesList.length > 0
+            spacing: 14
+            Text {
+                visible: showsList.length > 0
+                text: qsTr("Movies & specials")
+                color: Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+                font.letterSpacing: -0.3
+            }
+            Grid {
+                Layout.fillWidth: true
+                columns: Math.max(2, Math.floor((width + 12) / (Tokens.posterWidth + 12)))
+                columnSpacing: 12
+                rowSpacing: 20
+                Repeater {
+                    model: singlesList
+                    delegate: PosterCard {
+                        media: modelData
+                        onOpen: m => openMedia(m)
+                    }
+                }
+            }
+        }
+
+        // Collections demoted to an in-library section (advisor: no nav item).
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: filteredCollections.length > 0
+            spacing: 14
+            Text {
+                text: qsTr("Collections")
+                color: Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+                font.letterSpacing: -0.3
+            }
+            Repeater {
+                model: filteredCollections
+                delegate: MediaRow {
                     Layout.fillWidth: true
-                    text: modelData.title + "  ·  "
-                        + (modelData.episodeCount === 1 ? qsTr("1 episode") : qsTr("%1 episodes").arg(modelData.episodeCount))
-                        + (modelData.seasonCount > 0
-                            ? "  ·  " + (modelData.seasonCount === 1 ? qsTr("1 season") : qsTr("%1 seasons").arg(modelData.seasonCount))
-                            : "")
-                    color: Tokens.textPrimary
-                    font.family: Tokens.fontFamily
-                    font.pixelSize: Tokens.sectionSize
-                    font.weight: Font.DemiBold
-                    elide: Text.ElideRight
-                }
-                Text {
-                    text: expanded ? "▾" : "▸"
-                    color: Tokens.textTertiary
-                    font.family: Tokens.fontFamily
-                    font.pixelSize: Tokens.bodySize
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: expanded = !expanded
-                }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                visible: expanded
-                spacing: 2
-                Repeater {
-                    model: modelData.seasons || []
-                    delegate: ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Text {
-                            text: qsTr("Season %1").arg(modelData.season)
-                            color: Tokens.textTertiary
-                            font.family: Tokens.fontFamily
-                            font.pixelSize: Tokens.metaSize
-                        }
-                        Repeater {
-                            model: modelData.episodes || []
-                            delegate: Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 34
-                                radius: 8
-                                color: "transparent"
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 12
-                                    spacing: 10
-                                    Text {
-                                        Layout.preferredWidth: 90
-                                        text: "E" + modelData.episode
-                                        color: Tokens.textTertiary
-                                        font.family: Tokens.fontFamily
-                                        font.pixelSize: Tokens.metaSize
-                                    }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelData.displayTitle || modelData.title
-                                        color: Tokens.textPrimary
-                                        font.family: Tokens.fontFamily
-                                        font.pixelSize: Tokens.metaSize
-                                        elide: Text.ElideRight
-                                    }
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: { root.openMedia(modelData); }
-                                }
-                            }
-                        }
-                    }
-                }
-                Text {
-                    visible: (modelData.specials || []).length > 0
-                    text: qsTr("Specials")
-                    color: Tokens.textTertiary
-                    font.family: Tokens.fontFamily
-                    font.pixelSize: Tokens.metaSize
-                }
-                Repeater {
-                    model: modelData.specials || []
-                    delegate: Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 34
-                        radius: 8
-                        color: "transparent"
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            Text {
-                                Layout.fillWidth: true
-                                text: modelData.displayTitle || modelData.title
-                                color: Tokens.textPrimary
-                                font.family: Tokens.fontFamily
-                                font.pixelSize: Tokens.metaSize
-                                elide: Text.ElideRight
-                            }
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: { root.openMedia(modelData); }
-                        }
-                    }
+                    title: modelData.title
+                    rowHeight: Tokens.posterWidth * 1.5 + 46
+                    model: modelData.items
+                    delegate: PosterCard { media: modelData; onOpen: m => openMedia(m) }
                 }
             }
         }
-    }
 
-    // Dense desktop grid.
-    GridView {
-        id: grid
-        Layout.fillWidth: true
-        Layout.leftMargin: Tokens.pageMargin
-        Layout.rightMargin: Tokens.pageMargin
-        Layout.topMargin: 20
-        Layout.bottomMargin: Tokens.sectionGap
-        Layout.preferredHeight: Math.max(320, contentHeight)
-        visible: shown.length > 0
-        cellWidth: Tokens.posterWidth + Tokens.cardGap
-        cellHeight: Tokens.posterWidth * 1.5 + 56
-        boundsBehavior: Flickable.StopAtBounds
-        model: shown
-        delegate: PosterCard {
-            media: modelData
-            highlighted: GridView.isCurrentItem
-            onOpen: m => openMedia(m)
+        Text {
+            Layout.topMargin: 16
+            visible: showsList.length === 0 && singlesList.length === 0
+            text: items && items.length === 0
+                ? qsTr("Nothing indexed here yet. Run a scan from server settings.")
+                : qsTr("Nothing matches this filter.")
+            color: Tokens.textTertiary
+            font.family: Tokens.fontSans
+            font.pixelSize: Tokens.bodySize
         }
-    }
-
-    Text {
-        Layout.leftMargin: Tokens.pageMargin
-        Layout.topMargin: 40
-        Layout.bottomMargin: Tokens.sectionGap
-        visible: shown.length === 0
-        text: items && items.length === 0
-            ? qsTr("No media in this library. Scan it from server settings.")
-            : qsTr("No media matches this filter.")
-        color: Tokens.textTertiary
-        font.family: Tokens.fontFamily
-        font.pixelSize: Tokens.bodySize
     }
 }

@@ -1516,6 +1516,7 @@ QVariantMap ServerClient::normalize(const QJsonObject &item) const {
         {"episode", item.value("episode").toInt()},
         {"library_id", libraryId},
         {"library", library},
+        {"series_id", seriesKey(libraryId, displayTitle.trimmed().isEmpty() ? catalogTitle.trimmed() : displayTitle.trimmed())},
         {"genre", genres.isEmpty() ? QString() : genres.first()},
         {"genres", joinGenres(genres)},
         {"overview", synopsis},
@@ -1536,6 +1537,9 @@ QVariantMap ServerClient::normalize(const QJsonObject &item) const {
         {"size", static_cast<double>(size)},
         {"size_human", size > 0 ? humanSize(size) : QString()},
         {"file_name", QFileInfo(path).fileName()},
+        {"file_path", path},
+        {"missing", item.value("missing").toBool()},
+        {"updated_at", item.value("updated_at").toDouble()},
         {"tech", tech},
     };
 }
