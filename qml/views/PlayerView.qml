@@ -78,6 +78,16 @@ Item {
         var ss = (sec < 10 ? "0" : "") + sec;
         return (h > 0 ? h + ":" : "") + mm + ":" + ss;
     }
+    // Effects picker labels mirror the web player's EFFECT_PRESETS.
+    function shaderLabel(mode) {
+        switch (mode) {
+        case "anime4k-a": return qsTr("Anime4K Mode A (Ctrl+1)");
+        case "anime4k-aa": return qsTr("Anime4K Mode A+A (Ctrl+2)");
+        case "anime4k-lite": return qsTr("Anime4K Lite (no upscale)");
+        case "anime4k-dog-x2": return qsTr("Anime4K DoG ×2");
+        default: return qsTr("Off");
+        }
+    }
     function trackLabel(t) {
         var s = t.lang ? t.lang : "";
         if (t.title)
@@ -130,9 +140,10 @@ Item {
     // Esc tier 0: close open chrome (track pickers) before the route's
     // fullscreen/back handling. Returns true when it closed something.
     function closeChrome() {
-        if (audioPopup.visible || subPopup.visible) {
+        if (audioPopup.visible || subPopup.visible || shaderPopup.visible) {
             audioPopup.visible = false;
             subPopup.visible = false;
+            shaderPopup.visible = false;
             return true;
         }
         return false;
@@ -243,6 +254,7 @@ Item {
         onClicked: {
             audioPopup.visible = false;
             subPopup.visible = false;
+            shaderPopup.visible = false;
             togglePause();
         }
     }
@@ -501,7 +513,7 @@ Item {
                 }
                 PlayerButton { glyph: "\uf001"; glyphSize: 15; label: qsTr("Audio track"); onPressed: { audioPopup.visible = !audioPopup.visible; subPopup.visible = false; } }
                 PlayerButton { glyph: "\uf20a"; glyphSize: 15; label: qsTr("Subtitles"); onPressed: { subPopup.visible = !subPopup.visible; audioPopup.visible = false; } }
-                PlayerButton { glyph: "\uf0d0"; glyphSize: 15; label: qsTr("Cycle video shader"); onPressed: cycleShader() }
+                PlayerButton { glyph: "\uf0d0"; glyphSize: 15; label: qsTr("Video effects"); onPressed: { shaderPopup.visible = !shaderPopup.visible; audioPopup.visible = false; subPopup.visible = false; } }
                 PlayerButton { glyph: "\uf065"; glyphSize: 14; label: qsTr("Toggle fullscreen"); onPressed: toggleFullscreen() }
             }
         }
@@ -588,6 +600,60 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: { mpv.setSubtitleTrack(modelData.id); subPopup.visible = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    // Video-effects picker — the web player's Effects selector (DD-035):
+    // the bundled Anime4K presets, chosen by name instead of blind-cycled.
+    Rectangle {
+        id: shaderPopup
+        visible: false
+        z: 6
+        anchors.right: parent.right
+        anchors.rightMargin: playerRoot.sidebarWidth + 20
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 118
+        width: 280
+        height: Math.min(300, shaderList.implicitHeight + 28)
+        radius: Tokens.radiusMd
+        color: Tokens.bgElevated
+        border.color: Tokens.borderSubtle
+        Column {
+            id: shaderList
+            anchors.fill: parent
+            anchors.margins: 14
+            spacing: 4
+            Text { text: qsTr("Effects"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
+            Repeater {
+                model: mpv.shaderModes
+                delegate: Rectangle {
+                    required property var modelData
+                    width: shaderList.width
+                    height: 30
+                    radius: 6
+                    color: "transparent"
+                    activeFocusOnTab: true
+                    border.width: activeFocus ? 2 : 0
+                    border.color: Tokens.themeAccent
+                    Accessible.role: Accessible.Button
+                    Accessible.name: playerRoot.shaderLabel(modelData)
+                    Keys.onSpacePressed: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
+                    Keys.onReturnPressed: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
+                    Keys.onEnterPressed: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (mpv.shaderPreset === modelData ? "● " : "○ ") + playerRoot.shaderLabel(modelData)
+                        color: mpv.shaderPreset === modelData ? Tokens.themeAccent : Tokens.textPrimary
+                        font.family: Tokens.fontSans
+                        font.pixelSize: Tokens.metaSize
+                        elide: Text.ElideRight
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
                     }
                 }
             }

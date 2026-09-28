@@ -88,6 +88,8 @@ Two suites run offscreen under `ctest`:
   `./lain-desktop_*.AppImage --appimage-extract-and-run` works anywhere.
   Bundled libraries keep their own licenses (Qt LGPL-3.0, libmpv/FFmpeg
   GPL-2.0-or-later); sources are linked from the release notes.
+  `shaders/` vendors the Anime4K mpv hook packs (MIT, © bloc97) — the
+  same presets the web player ships: Mode A, Mode A+A, Lite, and DoG ×2.
 
 ## Layout
 

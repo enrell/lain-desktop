@@ -44,7 +44,10 @@ public:
     int subtitleId() const { return m_subtitleId; }
     QString shaderPreset() const { return m_shaderPreset; }
     QString shaderInfo() const { return m_shaderInfo; }
-    QStringList shaderModes() const { return {"off", "fast", "balanced", "quality"}; }
+    // Same ids and order as the web player's EFFECT_PRESETS.
+    QStringList shaderModes() const {
+        return {"off", "anime4k-a", "anime4k-aa", "anime4k-lite", "anime4k-dog-x2"};
+    }
     QString errorText() const { return m_errorText; }
 
     Q_INVOKABLE void play(const QString &url);

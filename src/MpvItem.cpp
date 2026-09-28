@@ -1,5 +1,7 @@
 #include "MpvItem.h"
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QMetaObject>
 #include <QOpenGLFramebufferObject>
 #include <QOpenGLFunctions>
@@ -353,6 +355,9 @@ void MpvItem::cycleSubtitle() {
     runCmd({"cycle", "sub"});
 }
 
+// Shader resolution order: user-installed pack dir, system install dir,
+// then the pack bundled in the QML module resources. mpv reads real
+// filesystem paths, so bundled GLSL is materialized into the cache once.
 QString MpvItem::findShaderDir() {
     const QString home =
         QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
@@ -361,31 +366,57 @@ QString MpvItem::findShaderDir() {
         return user;
     if (QDir("/usr/share/lain/shaders").exists())
         return "/usr/share/lain/shaders";
-    return {};
+    QDir res(QStringLiteral(":/qt/qml/Lain/shaders"));
+    const QStringList packed = res.entryList({"*.glsl"}, QDir::Files);
+    if (packed.isEmpty())
+        return {};
+    const QString cache =
+        QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+        + QStringLiteral("/shaders");
+    QDir().mkpath(cache);
+    for (const QString &f : packed) {
+        const QString dest = cache + QLatin1Char('/') + f;
+        if (!QFile::exists(dest)
+            || QFileInfo(dest).size() != QFileInfo(res.absoluteFilePath(f)).size())
+            QFile::copy(res.absoluteFilePath(f), dest);
+    }
+    return cache;
 }
 
-// Anime4K chains are ordered patterns. File names differ between releases,
-// so match case-insensitive substrings and apply every available shader.
+// Preset ids and chain order mirror the web player's effects policy
+// (effects-policy.ts + webgl/packs/anime4k.ts): off, Mode A, Mode A+A,
+// Lite, and the DoG x2 pipeline. AutoDownscalePre hooks carry WHEN
+// clauses, so appending both stays conditional like upstream Ctrl+1/2.
 void MpvItem::applyShaderPreset(const QString &name) {
     runCmd({"change-list", "glsl-shaders", "clr", ""});
+    static const QMap<QString, QString> labels{
+        {"off", QStringLiteral("Off")},
+        {"anime4k-a", QStringLiteral("Anime4K Mode A")},
+        {"anime4k-aa", QStringLiteral("Anime4K Mode A+A")},
+        {"anime4k-lite", QStringLiteral("Anime4K Lite")},
+        {"anime4k-dog-x2", QStringLiteral("Anime4K DoG ×2")},
+    };
     if (name == "off" || name.isEmpty()) {
-        m_shaderInfo = tr("Anime4K off");
+        m_shaderInfo = labels.value("off");
         emit shaderChanged();
         return;
     }
     static const QMap<QString, QStringList> chains{
-        {"fast",
-         {"Clamp_Highlights", "Restore_CNN_S", "Upscale_CNN_x2_S"}},
-        {"balanced",
+        {"anime4k-a",
          {"Clamp_Highlights", "Restore_CNN_M", "Upscale_CNN_x2_M",
-          "Upscale_DTD"}},
-        {"quality",
-         {"Clamp_Highlights", "Restore_CNN_L", "Upscale_CNN_x2_L",
-          "Upscale_CNN_L_x2_Deblur", "Upscale_DTD"}},
+          "AutoDownscalePre_x2", "AutoDownscalePre_x4", "Upscale_CNN_x2_S"}},
+        {"anime4k-aa",
+         {"Clamp_Highlights", "Restore_CNN_M", "Upscale_CNN_x2_M",
+          "Restore_CNN_S", "AutoDownscalePre_x2", "AutoDownscalePre_x4",
+          "Upscale_CNN_x2_S"}},
+        {"anime4k-lite",
+         {"Clamp_Highlights", "Restore_CNN_S", "Deblur_DoG",
+          "Darken_VeryFast"}},
+        {"anime4k-dog-x2", {"Lain_DoG_x2"}},
     };
     const QString dir = findShaderDir();
     if (dir.isEmpty()) {
-        m_shaderInfo = tr("shader directory ~/.config/lain/shaders is missing");
+        m_shaderInfo = tr("shader directory is missing");
         emit shaderChanged();
         return;
     }
@@ -404,8 +435,8 @@ void MpvItem::applyShaderPreset(const QString &name) {
         }
     }
     m_shaderInfo = applied > 0
-                       ? tr("Anime4K %1 · %2/%3 shaders")
-                             .arg(name)
+                       ? tr("%1 · %2/%3 shaders")
+                             .arg(labels.value(name, name))
                              .arg(applied)
                              .arg(wanted)
                        : tr("no matching shaders in %1").arg(dir);
@@ -413,8 +444,16 @@ void MpvItem::applyShaderPreset(const QString &name) {
 }
 
 void MpvItem::setShaderPreset(const QString &name) {
-    m_shaderPreset = shaderModes().contains(name) ? name : "off";
-    applyShaderPreset(m_shaderPreset);
+    // Legacy preset names from the pre-web-parity map still resolve.
+    static const QMap<QString, QString> legacy{
+        {"fast", "anime4k-lite"},
+        {"balanced", "anime4k-a"},
+        {"quality", "anime4k-aa"},
+    };
+    const QString resolved =
+        shaderModes().contains(name) ? name : legacy.value(name, "off");
+    m_shaderPreset = resolved;
+    applyShaderPreset(resolved);
 }
 
 void MpvItem::cycleShaderPreset() {

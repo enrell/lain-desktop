@@ -52,6 +52,17 @@ qt_add_qml_module(lain_core
         qml/views/SettingsView.qml
         qml/views/LoginView.qml
         qml/views/SetupWizard.qml
+    RESOURCES
+        shaders/Anime4K_AutoDownscalePre_x2.glsl
+        shaders/Anime4K_AutoDownscalePre_x4.glsl
+        shaders/Anime4K_Clamp_Highlights.glsl
+        shaders/Anime4K_Darken_VeryFast.glsl
+        shaders/Anime4K_Deblur_DoG.glsl
+        shaders/Anime4K_Restore_CNN_M.glsl
+        shaders/Anime4K_Restore_CNN_S.glsl
+        shaders/Anime4K_Upscale_CNN_x2_M.glsl
+        shaders/Anime4K_Upscale_CNN_x2_S.glsl
+        shaders/Lain_DoG_x2.glsl
 )
 target_sources(lain_core PRIVATE
     src/MpvItem.h src/MpvItem.cpp
