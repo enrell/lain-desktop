@@ -68,6 +68,9 @@ ColumnLayout {
                         font.pixelSize: 15
                     }
                     TextInput {
+        // Marks this field so window-level letter shortcuts
+        // stay disabled while typing (DD-036).
+        property bool acceptsText: true
                         id: searchInput
                         objectName: "searchInput"
                         Layout.fillWidth: true

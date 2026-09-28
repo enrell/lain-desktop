@@ -15,15 +15,24 @@ Item {
                                       ? (series.poster || series.cover) : ""
     signal open(var series)
 
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: series && series.title || ""
+    Keys.onSpacePressed: card.open(card.series)
+    Keys.onReturnPressed: card.open(card.series)
+    Keys.onEnterPressed: card.open(card.series)
+
     Rectangle {
         id: art
         width: parent.width
         height: parent.width * 1.5
         radius: Tokens.radiusMd
         clip: true
+        border.width: card.activeFocus ? 2 : 0
+        border.color: card.activeFocus ? Tokens.themeAccent
+            : (hover.containsMouse
+               ? Qt.alpha(Tokens.themeFg, 0.15) : Qt.alpha(Tokens.themeFg, 0.05))
         y: hover.containsMouse ? -4 : 0
-        border.color: hover.containsMouse
-            ? Qt.alpha(Tokens.themeFg, 0.15) : Qt.alpha(Tokens.themeFg, 0.05)
         Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
         gradient: Gradient {
             GradientStop { position: 0.0; color: Color.shade(card.accent, 0.38) }

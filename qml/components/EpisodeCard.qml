@@ -19,7 +19,15 @@ Rectangle {
     radius: Tokens.radiusMd
     clip: true
     color: Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeFg, 0.03))
-    border.color: hover.containsMouse ? Qt.alpha(Tokens.themeFg, 0.15) : Qt.alpha(Tokens.themeFg, 0.06)
+    activeFocusOnTab: item && !item.missing
+    Accessible.role: Accessible.Button
+    Accessible.name: epLabel + (item && item.title ? " " + item.title : "")
+    Keys.onSpacePressed: if (item && !item.missing) card.open(card.item)
+    Keys.onReturnPressed: if (item && !item.missing) card.open(card.item)
+    Keys.onEnterPressed: if (item && !item.missing) card.open(card.item)
+    border.width: activeFocus ? 2 : 0
+    border.color: activeFocus ? Tokens.themeAccent
+        : (hover.containsMouse ? Qt.alpha(Tokens.themeFg, 0.15) : Qt.alpha(Tokens.themeFg, 0.06))
     opacity: item && item.missing ? 0.6 : 1.0
     y: hover.containsMouse && !(item && item.missing) ? -4 : 0
     Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }

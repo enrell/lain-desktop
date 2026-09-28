@@ -14,6 +14,7 @@ Rectangle {
     signal navigate(string route)
     signal logout()
     signal account()
+    signal helpRequested()
 
     readonly property var links: [
         { route: "home", label: qsTr("Home") },
@@ -71,24 +72,38 @@ Rectangle {
 
         RowLayout {
             anchors.centerIn: parent
-            spacing: 32
+            spacing: 12
             Repeater {
                 model: bar.links
-                delegate: Text {
-                    text: modelData.label
-                    color: bar.navActive(modelData.route) ? Tokens.textPrimary : Tokens.textTertiary
-                    font.family: Tokens.fontSans
-                    font.pixelSize: 13
-                    font.letterSpacing: 0.4
+                delegate: Rectangle {
+                    radius: 8
+                    color: "transparent"
+                    implicitWidth: label.implicitWidth + 16
+                    implicitHeight: 30
+                    activeFocusOnTab: true
+                    border.width: activeFocus ? 2 : 0
+                    border.color: Tokens.themeAccent
+                    Accessible.role: Accessible.Link
+                    Accessible.name: modelData.label
+                    Keys.onSpacePressed: bar.navigate(modelData.route)
+                    Keys.onReturnPressed: bar.navigate(modelData.route)
+                    Keys.onEnterPressed: bar.navigate(modelData.route)
+                    Text {
+                        id: label
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: bar.navActive(modelData.route) ? Tokens.textPrimary : Tokens.textTertiary
+                        font.family: Tokens.fontSans
+                        font.pixelSize: 13
+                        font.letterSpacing: 0.4
+                    }
                     MouseArea {
                         anchors.fill: parent
-                        anchors.margins: -8
                         hoverEnabled: true
-                        onEntered: if (!bar.navActive(modelData.route)) parent.color = Tokens.textSecondary
-                        onExited: parent.color = bar.navActive(modelData.route) ? Tokens.textPrimary : Tokens.textTertiary
+                        onEntered: if (!bar.navActive(modelData.route)) label.color = Tokens.textSecondary
+                        onExited: label.color = bar.navActive(modelData.route) ? Tokens.textPrimary : Tokens.textTertiary
                         onClicked: bar.navigate(modelData.route)
                     }
-                    Accessible.name: modelData.label
                 }
             }
         }
@@ -116,6 +131,35 @@ Rectangle {
                 }
             }
 
+            // Keybindings help affordance — the DD-036 overlay must be
+            // reachable by mouse and keyboard focus, not only `?`.
+            Rectangle {
+                Layout.preferredWidth: 28
+                Layout.preferredHeight: 28
+                radius: 14
+                color: "transparent"
+                activeFocusOnTab: true
+                border.width: activeFocus ? 2 : 0
+                border.color: Tokens.themeAccent
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Keyboard shortcuts")
+                Keys.onSpacePressed: bar.helpRequested()
+                Keys.onReturnPressed: bar.helpRequested()
+                Keys.onEnterPressed: bar.helpRequested()
+                Text {
+                    anchors.centerIn: parent
+                    text: "?"
+                    color: Tokens.textTertiary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: bar.helpRequested()
+                }
+            }
+
             // Account avatar opens the dropdown menu.
             Rectangle {
                 id: avatar
@@ -123,7 +167,14 @@ Rectangle {
                 Layout.preferredHeight: 30
                 radius: 15
                 color: Qt.tint(Tokens.bgPrimary, Qt.alpha(Tokens.themeAccent, 0.15))
-                border.color: Qt.alpha(Tokens.themeAccent, 0.4)
+                border.color: activeFocus ? Tokens.themeAccent : Qt.alpha(Tokens.themeAccent, 0.4)
+                border.width: activeFocus ? 2 : 1
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Account menu")
+                Keys.onSpacePressed: menu.visible = !menu.visible
+                Keys.onReturnPressed: menu.visible = !menu.visible
+                Keys.onEnterPressed: menu.visible = !menu.visible
                 Text {
                     anchors.centerIn: parent
                     text: String(server.username || "?").charAt(0).toUpperCase()
@@ -136,7 +187,6 @@ Rectangle {
                     anchors.fill: parent
                     onClicked: menu.visible = !menu.visible
                 }
-                Accessible.name: qsTr("Account menu")
             }
         }
     }

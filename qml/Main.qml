@@ -142,6 +142,14 @@ Window {
             page.contentY = 0;
         }
         onLogout: server.logout()
+        onHelpRequested: shortcutsOverlay.open()
+    }
+
+    // Text fields eat letters themselves; shortcut matches can shadow
+    // them on window context, so gate plain-letter bindings on focus.
+    function typing() {
+        var f = root.contentItem.activeFocusItem;
+        return !!(f && f["acceptsText"] === true);
     }
 
     // Ctrl+F / "/" jump straight to the search page (web parity).
@@ -151,31 +159,69 @@ Window {
         onActivated: { root.route = "search"; searchView.focusInput(); }
     }
     Shortcut {
-        enabled: server.ready
+        enabled: server.ready && !root.typing()
         sequence: "/"
         onActivated: { root.route = "search"; searchView.focusInput(); }
     }
     Shortcut { enabled: server.ready; sequence: "Alt+Left"; onActivated: root.route = "home" }
     Shortcut {
+        enabled: server.ready && !root.typing()
+        sequence: "?"
+        onActivated: {
+            if (shortcutsOverlay.visible) shortcutsOverlay.close();
+            else shortcutsOverlay.open();
+        }
+    }
+
+    // Vim-style g-prefix navigation (DD-036). Disabled inside the player
+    // where letters are the playback map — Esc is the way out there.
+    property bool gArmed: false
+    Timer { id: gTimer; interval: 700; onTriggered: root.gArmed = false }
+    Shortcut {
+        enabled: server.ready && !root.typing() && root.route !== "player"
+        sequence: "g"
+        onActivated: { root.gArmed = true; gTimer.restart(); }
+    }
+    Shortcut { enabled: root.gArmed; sequence: "h"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "home"; } }
+    Shortcut { enabled: root.gArmed; sequence: "l"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "library"; } }
+    Shortcut { enabled: root.gArmed; sequence: "s"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "search"; searchView.focusInput(); } }
+    Shortcut { enabled: root.gArmed; sequence: "e"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "settings"; } }
+
+    // Esc tiers: shortcuts overlay → player popups → fullscreen → back.
+    Shortcut {
         sequence: "Esc"
         onActivated: {
-            if (root.visibility === Window.FullScreen)
+            if (shortcutsOverlay.visible)
+                shortcutsOverlay.close();
+            else if (root.route === "player" && playerView.closeChrome())
+                return;
+            else if (root.visibility === Window.FullScreen)
                 root.visibility = Window.Windowed;
             else if (root.route === "detail" || root.route === "player" || root.route === "series")
                 root.route = root.returnRoute;
         }
     }
 
-    // Player shortcuts (§31)
+    // Player shortcuts (§31 + DD-036: YouTube/vim muscle memory).
     Shortcut { enabled: root.route === "player"; sequence: "Space"; onActivated: playerView.togglePause() }
+    Shortcut { enabled: root.route === "player"; sequence: "K"; onActivated: playerView.togglePause() }
     Shortcut { enabled: root.route === "player"; sequence: "Left"; onActivated: playerView.seekBy(-10) }
+    Shortcut { enabled: root.route === "player"; sequence: "J"; onActivated: playerView.seekBy(-10) }
+    Shortcut { enabled: root.route === "player"; sequence: "H"; onActivated: playerView.seekBy(-10) }
     Shortcut { enabled: root.route === "player"; sequence: "Right"; onActivated: playerView.seekBy(10) }
+    Shortcut { enabled: root.route === "player"; sequence: "L"; onActivated: playerView.seekBy(10) }
     Shortcut { enabled: root.route === "player"; sequence: "Up"; onActivated: playerView.adjustVolume(5) }
+    Shortcut { enabled: root.route === "player"; sequence: "0"; onActivated: playerView.adjustVolume(5) }
     Shortcut { enabled: root.route === "player"; sequence: "Down"; onActivated: playerView.adjustVolume(-5) }
+    Shortcut { enabled: root.route === "player"; sequence: "9"; onActivated: playerView.adjustVolume(-5) }
     Shortcut { enabled: root.route === "player"; sequence: "M"; onActivated: playerView.toggleMute() }
     Shortcut { enabled: root.route === "player"; sequence: "F"; onActivated: playerView.toggleFullscreen() }
     Shortcut { enabled: root.route === "player"; sequence: "A"; onActivated: playerView.cycleAudio() }
     Shortcut { enabled: root.route === "player"; sequence: "S"; onActivated: playerView.cycleSubtitle() }
+    Shortcut { enabled: root.route === "player"; sequence: "N"; onActivated: playerView.stepEpisode(1) }
+    Shortcut { enabled: root.route === "player"; sequence: "P"; onActivated: playerView.stepEpisode(-1) }
+
+    ShortcutsOverlay { id: shortcutsOverlay }
 
     LoginView {
         anchors.fill: parent

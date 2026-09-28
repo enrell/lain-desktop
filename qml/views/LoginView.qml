@@ -167,6 +167,9 @@ Item {
                 font.letterSpacing: 1
             }
             TextInput {
+        // Marks this field so window-level letter shortcuts
+        // stay disabled while typing (DD-036).
+        property bool acceptsText: true
                 id: input
                 Layout.fillWidth: true
                 Layout.bottomMargin: 8

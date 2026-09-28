@@ -104,6 +104,40 @@ Item {
     function cycleSubtitle() { mpv.cycleSubtitle(); osd(qsTr("Subtitles")); wake(); }
     function cycleShader() { mpv.cycleShaderPreset(); osd(mpv.shaderInfo); wake(); }
 
+    // Episode rail navigation (n/p keys, DD-036). Skips missing files.
+    function episodeIndex() {
+        if (!playerRoot.media || !playerRoot.media.id)
+            return -1;
+        for (var i = 0; i < seriesEpisodes.length; ++i)
+            if (seriesEpisodes[i].id === playerRoot.media.id)
+                return i;
+        return -1;
+    }
+    function stepEpisode(delta) {
+        var i = episodeIndex();
+        if (i < 0)
+            return;
+        for (var n = i + delta; n >= 0 && n < seriesEpisodes.length; n += delta) {
+            var it = seriesEpisodes[n];
+            if (!it.missing) {
+                playMedia(it);
+                wake();
+                return;
+            }
+        }
+        osd(delta > 0 ? qsTr("No next episode") : qsTr("No previous episode"));
+    }
+    // Esc tier 0: close open chrome (track pickers) before the route's
+    // fullscreen/back handling. Returns true when it closed something.
+    function closeChrome() {
+        if (audioPopup.visible || subPopup.visible) {
+            audioPopup.visible = false;
+            subPopup.visible = false;
+            return true;
+        }
+        return false;
+    }
+
     // Report only meaningful positions; completion is reported at EOF.
     function report(completed) {
         if (!media || !media.id || !hasStream || mpv.duration <= 0)
@@ -368,6 +402,7 @@ Item {
             PlayerButton {
                 glyph: "\uf053"
                 glyphSize: 15
+                label: qsTr("Back")
                 onPressed: back()
             }
             Text {
@@ -450,11 +485,11 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 4
-                PlayerButton { glyph: "-10s"; glyphSize: 12; bold: true; onPressed: seekBy(-10) }
-                PlayerButton { glyph: mpv.paused ? "\uf04b" : "\uf04c"; glyphSize: 18; onPressed: togglePause() }
-                PlayerButton { glyph: "+10s"; glyphSize: 12; bold: true; onPressed: seekBy(10) }
+                PlayerButton { glyph: "-10s"; glyphSize: 12; bold: true; label: qsTr("Rewind 10 seconds"); onPressed: seekBy(-10) }
+                PlayerButton { glyph: mpv.paused ? "\uf04b" : "\uf04c"; glyphSize: 18; label: mpv.paused ? qsTr("Play") : qsTr("Pause"); onPressed: togglePause() }
+                PlayerButton { glyph: "+10s"; glyphSize: 12; bold: true; label: qsTr("Forward 10 seconds"); onPressed: seekBy(10) }
                 Item { Layout.fillWidth: true }
-                PlayerButton { glyph: mpv.muted ? "\uf026" : "\uf028"; glyphSize: 16; onPressed: toggleMute() }
+                PlayerButton { glyph: mpv.muted ? "\uf026" : "\uf028"; glyphSize: 16; label: mpv.muted ? qsTr("Unmute") : qsTr("Mute"); onPressed: toggleMute() }
                 SeekBar {
                     Layout.preferredWidth: 90
                     from: 0
@@ -464,10 +499,10 @@ Item {
                     onScrubbed: v => mpv.setVolume(v)
                     onReleased: v => mpv.setVolume(v)
                 }
-                PlayerButton { glyph: "\uf001"; glyphSize: 15; onPressed: { audioPopup.visible = !audioPopup.visible; subPopup.visible = false; } }
-                PlayerButton { glyph: "\uf20a"; glyphSize: 15; onPressed: { subPopup.visible = !subPopup.visible; audioPopup.visible = false; } }
-                PlayerButton { glyph: "\uf0d0"; glyphSize: 15; onPressed: cycleShader() }
-                PlayerButton { glyph: "\uf065"; glyphSize: 14; onPressed: toggleFullscreen() }
+                PlayerButton { glyph: "\uf001"; glyphSize: 15; label: qsTr("Audio track"); onPressed: { audioPopup.visible = !audioPopup.visible; subPopup.visible = false; } }
+                PlayerButton { glyph: "\uf20a"; glyphSize: 15; label: qsTr("Subtitles"); onPressed: { subPopup.visible = !subPopup.visible; audioPopup.visible = false; } }
+                PlayerButton { glyph: "\uf0d0"; glyphSize: 15; label: qsTr("Cycle video shader"); onPressed: cycleShader() }
+                PlayerButton { glyph: "\uf065"; glyphSize: 14; label: qsTr("Toggle fullscreen"); onPressed: toggleFullscreen() }
             }
         }
     }

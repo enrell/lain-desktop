@@ -69,6 +69,26 @@ TestCase {
         tryCompare(pv.mpvItem, "paused", !before, 2000);
     }
 
+    // DD-036: n/p moves through the episode rail, skipping missing files.
+    function test_step_episode_skips_missing() {
+        var eps = [
+            { id: "e1", title: "Frieren", season: 1, episode: 1 },
+            { id: "e2", title: "Frieren", season: 1, episode: 2, missing: true },
+            { id: "e3", title: "Frieren", season: 1, episode: 3 }
+        ];
+        var p2 = Qt.createQmlObject(
+            'import QtQuick; import Lain; PlayerView { width: 1440; height: 900; media: ({ id: "e1", title: "Frieren" }) }',
+            this);
+        verify(p2);
+        // series.seasons[].episodes + series.specials is the ServerClient shape.
+        p2.series = { title: "Frieren", seasons: [{ season: 1, episodes: eps }] };
+        var fired = null;
+        p2.playMedia.connect(function (m) { fired = m.id; });
+        p2.stepEpisode(1);
+        compare(fired, "e3", "next episode must skip the missing e2");
+        p2.destroy();
+    }
+
     function test_mute_button_toggles_mpv() {
         if (!pv) {
             pv = createTemporaryObject(playerComp, this);

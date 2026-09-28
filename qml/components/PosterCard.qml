@@ -19,15 +19,24 @@ Item {
     signal open(var media)
     signal play(var media)
 
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: media && (media.displayTitle || media.title) || ""
+    Keys.onSpacePressed: card.open(card.media)
+    Keys.onReturnPressed: card.open(card.media)
+    Keys.onEnterPressed: card.open(card.media)
+
     Rectangle {
         id: art
         width: parent.width
         height: parent.width * 1.5
         radius: Tokens.radiusMd
         clip: true
+        border.width: card.activeFocus ? 2 : 0
+        border.color: card.activeFocus ? Tokens.themeAccent
+            : (hover.containsMouse || card.highlighted
+               ? Qt.alpha(Tokens.themeFg, 0.15) : Qt.alpha(Tokens.themeFg, 0.05))
         y: (card.highlighted || hover.containsMouse) ? -4 : 0
-        border.color: hover.containsMouse || card.highlighted
-            ? Qt.alpha(Tokens.themeFg, 0.15) : Qt.alpha(Tokens.themeFg, 0.05)
         Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
         gradient: Gradient {
             GradientStop { position: 0.0; color: Color.shade(card.accent, 0.38) }

@@ -41,6 +41,7 @@ qt_add_qml_module(lain_core
         qml/components/PlayerButton.qml
         qml/components/SeekBar.qml
         qml/components/ConfirmDialog.qml
+        qml/components/ShortcutsOverlay.qml
         qml/components/Hero.qml
         qml/views/HomeView.qml
         qml/views/LibraryView.qml

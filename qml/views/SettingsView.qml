@@ -291,6 +291,9 @@ ColumnLayout {
                 color: Tokens.bgSecondary
                 border.color: libName.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
                 TextInput {
+        // Marks this field so window-level letter shortcuts
+        // stay disabled while typing (DD-036).
+        property bool acceptsText: true
                     id: libName
                     anchors.fill: parent
                     anchors.leftMargin: 12
@@ -332,6 +335,9 @@ ColumnLayout {
                 color: Tokens.bgSecondary
                 border.color: libPath.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
                 TextInput {
+        // Marks this field so window-level letter shortcuts
+        // stay disabled while typing (DD-036).
+        property bool acceptsText: true
                     id: libPath
                     anchors.fill: parent
                     anchors.leftMargin: 12
@@ -460,6 +466,9 @@ ColumnLayout {
                 color: Tokens.bgSecondary
                 border.color: newUserName.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
                 TextInput {
+        // Marks this field so window-level letter shortcuts
+        // stay disabled while typing (DD-036).
+        property bool acceptsText: true
                     id: newUserName
                     anchors.fill: parent
                     anchors.leftMargin: 12
@@ -486,6 +495,9 @@ ColumnLayout {
                 color: Tokens.bgSecondary
                 border.color: newUserPass.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
                 TextInput {
+        // Marks this field so window-level letter shortcuts
+        // stay disabled while typing (DD-036).
+        property bool acceptsText: true
                     id: newUserPass
                     anchors.fill: parent
                     anchors.leftMargin: 12
