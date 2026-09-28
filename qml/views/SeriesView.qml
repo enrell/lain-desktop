@@ -48,6 +48,14 @@ ColumnLayout {
     }
     readonly property string posterArt: series && series.poster ? series.poster
         : (artItem ? (artItem.poster || artItem.cover || artItem.thumb || "") : "")
+    // Enriched display title for the representative episode, catalog title
+    // otherwise — same fallback the web TitleView uses.
+    readonly property string displayTitle: {
+        var t = artItem && artItem.displayTitle ? String(artItem.displayTitle).trim() : "";
+        if (t !== "")
+            return t;
+        return series ? String(series.title) : "";
+    }
     readonly property string synopsis: {
         var items = allItems;
         for (var i = 0; i < items.length; ++i)
@@ -104,6 +112,20 @@ ColumnLayout {
 
     property string seasonFilter: "all"
 
+    // Episode-grid geometry derives from the view width, never from a
+    // layout-managed child's width — that feeds the positioner back into
+    // itself and loops the layout.
+    readonly property int pageMargin: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
+    readonly property int epWidth: Math.max(320, root.width - 2 * pageMargin - 220 - 32)
+    function epCols() {
+        if (epWidth >= 1024) return 3;
+        if (epWidth >= 640) return 2;
+        return 1;
+    }
+    function epCell(gap, cols) {
+        return Math.floor((epWidth - gap * (cols - 1)) / cols);
+    }
+
     function episodeLabel(it) {
         if (!it)
             return "";
@@ -127,6 +149,8 @@ ColumnLayout {
     // Backdrop header card.
     Rectangle {
         Layout.fillWidth: true
+        Layout.leftMargin: root.pageMargin
+        Layout.rightMargin: Layout.leftMargin
         Layout.preferredHeight: 300
         radius: Tokens.radiusLg
         clip: true
@@ -146,21 +170,6 @@ ColumnLayout {
                 GradientStop { position: 0.4; color: Qt.alpha(Tokens.bgPrimary, 0.6) }
                 GradientStop { position: 1.0; color: Tokens.bgPrimary }
             }
-        }
-        // Back affordance.
-        Rectangle {
-            x: 20; y: 16; z: 5
-            width: 96; height: 34; radius: Tokens.radiusPill
-            color: Qt.alpha(Tokens.bgPrimary, 0.55)
-            border.color: Tokens.borderSubtle
-            Text {
-                anchors.centerIn: parent
-                text: qsTr("‹  Back")
-                color: Tokens.textPrimary
-                font.family: Tokens.fontSans
-                font.pixelSize: Tokens.metaSize
-            }
-            MouseArea { anchors.fill: parent; onClicked: back() }
         }
         ColumnLayout {
             anchors.left: parent.left
@@ -185,13 +194,20 @@ ColumnLayout {
             }
             Text {
                 Layout.fillWidth: true
-                text: series ? series.title : ""
+                text: displayTitle
                 color: Tokens.textPrimary
                 font.family: Tokens.fontSans
                 font.pixelSize: 44
-                font.weight: Font.Bold
-                font.letterSpacing: -1.3
+                font.weight: Font.DemiBold
+                font.letterSpacing: -0.8
                 elide: Text.ElideRight
+            }
+            Text {
+                visible: displayTitle !== (series ? String(series.title) : "")
+                text: qsTr("Indexed as “%1”").arg(series ? series.title : "")
+                color: Tokens.textTertiary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize
             }
             Row {
                 visible: genreList.length > 0
@@ -234,7 +250,7 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Layout.leftMargin: Math.max(0, (root.width - Tokens.contentWidth) / 2)
+        Layout.leftMargin: root.pageMargin
         Layout.rightMargin: Layout.leftMargin
         Layout.alignment: Qt.AlignTop
         spacing: 32
@@ -283,14 +299,14 @@ ColumnLayout {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 44
                     radius: Tokens.radiusPill
-                    color: resumeTarget ? Tokens.textPrimary : Tokens.surface2
+                    color: resumeTarget ? Tokens.surface2 : Tokens.surface1
                     Text {
                         anchors.centerIn: parent
                         text: resuming ? qsTr("▶  Resume from %1").arg(fmtTime(resumeTarget.position_sec)) : qsTr("▶  Play")
-                        color: resumeTarget ? Tokens.bgPrimary : Tokens.textTertiary
+                        color: resumeTarget ? Tokens.textPrimary : Tokens.textTertiary
                         font.family: Tokens.fontSans
                         font.pixelSize: 14
-                        font.weight: Font.Bold
+                        font.weight: Font.DemiBold
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -386,31 +402,34 @@ ColumnLayout {
                             rows.push({ label: qsTr("Watched"), value: qsTr("%1 of %2").arg(watchedCount).arg(totalCount) });
                             return rows;
                         }
-                        delegate: RowLayout {
+                        delegate: ColumnLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 34
-                            spacing: 12
+                            spacing: 0
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 1
-                                Layout.alignment: Qt.AlignTop
                                 color: Qt.alpha(Tokens.themeFg, 0.06)
                             }
-                            Text {
-                                text: modelData.label
-                                color: Tokens.textTertiary
-                                font.family: Tokens.fontSans
-                                font.pixelSize: 12
-                                font.capitalization: Font.AllUppercase
-                                font.letterSpacing: 0.8
-                            }
-                            Item { Layout.fillWidth: true }
-                            Text {
-                                text: modelData.value
-                                color: Tokens.textPrimary
-                                font.family: Tokens.fontSans
-                                font.pixelSize: 13
-                                font.weight: Font.DemiBold
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 34
+                                spacing: 12
+                                Text {
+                                    text: modelData.label
+                                    color: Tokens.textTertiary
+                                    font.family: Tokens.fontSans
+                                    font.pixelSize: 12
+                                    font.capitalization: Font.AllUppercase
+                                    font.letterSpacing: 0.8
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: modelData.value
+                                    color: Tokens.textPrimary
+                                    font.family: Tokens.fontSans
+                                    font.pixelSize: 13
+                                    font.weight: Font.DemiBold
+                                }
                             }
                         }
                     }
@@ -420,6 +439,7 @@ ColumnLayout {
 
         // Episodes column: season chips + grid + Specials.
         ColumnLayout {
+            id: epCol
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
             spacing: 16
@@ -429,7 +449,7 @@ ColumnLayout {
                 spacing: 8
                 Repeater {
                     model: [{ id: "all", label: qsTr("All") }].concat(
-                        seasons.map(function (s) { return { id: String(s.season), label: qsTr("Season %1").arg(s.season) }; }))
+                        seasons.map(function (s) { return { id: String(s.season), label: s.season === 0 ? qsTr("Episodes") : qsTr("Season %1").arg(s.season) }; }))
                     delegate: Rectangle {
                         height: 30
                         width: chipText.implicitWidth + 26
@@ -469,7 +489,7 @@ ColumnLayout {
                     spacing: 10
                     Text {
                         visible: seasons.length > 1
-                        text: qsTr("Season %1").arg(modelData.season)
+                        text: modelData.season === 0 ? qsTr("Episodes") : qsTr("Season %1").arg(modelData.season)
                         color: Tokens.textTertiary
                         font.family: Tokens.fontFamily
                         font.pixelSize: 10
@@ -477,14 +497,19 @@ ColumnLayout {
                         font.letterSpacing: 1.6
                     }
                     Grid {
+                        id: epGrid
                         Layout.fillWidth: true
-                        columns: Math.max(1, Math.floor((width + 16) / 260))
-                        columnSpacing: 16
-                        rowSpacing: 16
+                        readonly property int cols: root.epCols()
+                        readonly property int gap: 16
+                        columns: cols
+                        columnSpacing: gap
+                        rowSpacing: 24
                         Repeater {
                             model: modelData.episodes
                             delegate: EpisodeCard {
+                                width: root.epCell(epGrid.gap, epGrid.cols)
                                 item: modelData
+                                groupTitle: series ? String(series.title) : ""
                                 onPlay: m => playMedia(m)
                                 onOpen: m => openMedia(m)
                             }
@@ -508,14 +533,19 @@ ColumnLayout {
                     font.letterSpacing: 1.6
                 }
                 Grid {
+                    id: specialsGrid
                     Layout.fillWidth: true
-                    columns: Math.max(1, Math.floor((width + 16) / 260))
-                    columnSpacing: 16
-                    rowSpacing: 16
+                    readonly property int cols: root.epCols()
+                    readonly property int gap: 16
+                    columns: cols
+                    columnSpacing: gap
+                    rowSpacing: 24
                     Repeater {
                         model: specials
                         delegate: EpisodeCard {
+                            width: root.epCell(specialsGrid.gap, specialsGrid.cols)
                             item: modelData
+                            groupTitle: series ? String(series.title) : ""
                             onPlay: m => playMedia(m)
                             onOpen: m => openMedia(m)
                         }

@@ -8,7 +8,7 @@ import "../theme/Color.js" as Color
 Item {
     id: card
     width: Tokens.posterWidth
-    height: Tokens.posterWidth * 1.5 + 46
+    height: width * 1.5 + 46
     property var series
     property string accent: series && series.accent ? series.accent : "#8A93A3"
     readonly property string artwork: series && (series.poster || series.cover)

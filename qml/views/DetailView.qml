@@ -88,22 +88,6 @@ ColumnLayout {
                 GradientStop { position: 1.0; color: Tokens.bgPrimary }
             }
         }
-        Rectangle {
-            x: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
-            y: 16
-            z: 5
-            width: 96; height: 34; radius: Tokens.radiusPill
-            color: Qt.alpha(Tokens.bgPrimary, 0.55)
-            border.color: Tokens.borderSubtle
-            Text {
-                anchors.centerIn: parent
-                text: qsTr("‹  Back")
-                color: Tokens.textPrimary
-                font.family: Tokens.fontSans
-                font.pixelSize: Tokens.metaSize
-            }
-            MouseArea { anchors.fill: parent; onClicked: back() }
-        }
     }
 
     // Poster + meta column.

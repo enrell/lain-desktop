@@ -9,7 +9,7 @@ import "../theme/Format.js" as Format
 Item {
     id: card
     width: Tokens.posterWidth
-    height: Tokens.posterWidth * 1.5 + 46
+    height: width * 1.5 + 46
     property var media
     property string accent: media && media.accent ? media.accent : "#8A93A3"
     readonly property string artwork: media && (media.poster || media.cover || media.thumb)

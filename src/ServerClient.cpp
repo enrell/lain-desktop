@@ -1,6 +1,8 @@
 #include "ServerClient.h"
 
 #include <QCryptographicHash>
+#include <QRegularExpression>
+#include <QSet>
 #include <QFile>
 #include <QFileInfo>
 #include <memory>
@@ -516,31 +518,40 @@ void ServerClient::rebuildCatalog() {
     startAutoEnrich();
 }
 
+// Web parity: groups key on the catalog title, never the enriched
+// display title — that's what lets unrelated enrichments not split a
+// show apart (groupItems in the web keys on item.title).
 QString ServerClient::seriesTitleFor(const QVariantMap &card) {
-    const QString display = card.value("displayTitle").toString().trimmed();
-    return display.isEmpty() ? card.value("title").toString().trimmed() : display;
+    return card.value("title").toString().trimmed();
 }
 
-QString ServerClient::seriesKey(const QString &libraryId, const QString &seriesTitle) {
+// Web parity: one group per normalized title across every library
+// (normalizeSeriesTitle = lowercase + collapsed whitespace).
+QString ServerClient::seriesKey(const QString &seriesTitle) {
+    const QString normalized = seriesTitle.trimmed().toLower()
+        .split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts)
+        .join(QLatin1Char(' '));
     const QByteArray hash = QCryptographicHash::hash(
-        (libraryId + QLatin1String("\x00") + seriesTitle).toUtf8(), QCryptographicHash::Sha1);
+        normalized.toUtf8(), QCryptographicHash::Sha1);
     return QStringLiteral("series:") + QString::fromLatin1(hash.toHex().left(16));
 }
 
-// Series hierarchy (DD-030): episodes group by library plus series title.
-// Season and episode numbers come from the identifier; season <= 0 or
-// episode <= 0 lands in Specials so strict numbering never misfiles extras.
+// Series hierarchy (DD-030): file episodes group by normalized title,
+// matching the web's one-group-per-title model. Season and episode
+// numbers come from the identifier; files with no episode number land
+// in the explicit Specials section so strict numbering never misfiles
+// extras, while season-0 numbered files stay episodes like the web.
 void ServerClient::buildSeries() {
     QHash<QString, QVariantList> bySeries;
     QHash<QString, QVariantMap> meta;
     QStringList order;
-    for (const QVariant &v : m_shows) {
+    for (const QVariant &v : m_catalog) {
         const QVariantMap card = v.toMap();
         const QString title = seriesTitleFor(card);
         if (title.isEmpty())
             continue;
         const QString lib = card.value("library_id").toString();
-        const QString key = seriesKey(lib, title);
+        const QString key = seriesKey(title);
         if (!bySeries.contains(key)) {
             bySeries.insert(key, {});
             order << key;
@@ -550,17 +561,21 @@ void ServerClient::buildSeries() {
                                          {"library", card.value("library").toString()},
                                          {"poster", card.value("poster").toString()},
                                          {"cover", card.value("cover").toString()},
-                                         {"year", card.value("year").toInt()},
+                                         {"year", card.value("catalog_year").toInt()},
                                          {"accent", card.value("accent").toString()}});
         }
         QVariantList episodes = bySeries.value(key);
-        // Keep the first enriched artwork/year found for the series row.
         QVariantMap info = meta.value(key);
+        // Web parity: groups key on the catalog title and years agree only
+        // when every file agrees on it.
+        if (info.value("year").toInt() != card.value("catalog_year").toInt())
+            info["year"] = 0;
+        // Keep the first enriched artwork found for the series row.
         if (info.value("poster").toString().isEmpty() && !card.value("poster").toString().isEmpty()) {
             info["poster"] = card.value("poster");
             info["cover"] = card.value("cover");
-            meta[key] = info;
         }
+        meta[key] = info;
         episodes << card;
         bySeries[key] = episodes;
     }
@@ -572,6 +587,10 @@ void ServerClient::buildSeries() {
     QVariantList series;
     for (const QString &key : order) {
         QVariantList cards = bySeries.value(key);
+        // A single-file group is a title, not a series — singles render
+        // through the poster grid on both web and desktop.
+        if (cards.size() < 2)
+            continue;
         std::sort(cards.begin(), cards.end(), [](const QVariant &a, const QVariant &b) {
             const QVariantMap ca = a.toMap(), cb = b.toMap();
             if (ca.value("season").toInt() != cb.value("season").toInt())
@@ -589,7 +608,10 @@ void ServerClient::buildSeries() {
             const QVariantMap card = v.toMap();
             const int season = card.value("season").toInt();
             const int episode = card.value("episode").toInt();
-            if (season > 0 && episode > 0) {
+            // Specials are files with no episode number at all; a numbered
+            // episode in an unnumbered season stays an episode (season 0
+            // sorts first, matching the web's watch order).
+            if (episode > 0) {
                 if (!seasons.contains(season))
                     seasonOrder << season;
                 seasons[season] << card;
@@ -621,7 +643,7 @@ QString ServerClient::seriesIdFor(const QString &id) const {
     for (const QVariant &v : m_catalog) {
         const QVariantMap card = v.toMap();
         if (card.value("id").toString() == id)
-            return seriesKey(card.value("library_id").toString(), seriesTitleFor(card));
+            return seriesKey(seriesTitleFor(card));
     }
     return {};
 }
@@ -851,16 +873,28 @@ void ServerClient::openMedia(const QString &id) {
 
         const QString genre = detail.value("genre").toString();
         const QString library = item.value("library_id").toString();
+        const QString ownSeries = detail.value("series_id").toString();
         QVariantList related;
+        QSet<QString> seenSeries;
         for (const QJsonValue &v : m_raw) {
             const QJsonObject other = v.toObject();
             if (other.value("id").toString() == id)
                 continue;
             const QVariantMap card = normalize(other);
+            // The same show is not "related", and only one card per show —
+            // otherwise a 16-episode group fills the row with duplicates.
+            const QString sid = card.value("series_id").toString();
+            if (!ownSeries.isEmpty() && sid == ownSeries)
+                continue;
+            if (!sid.isEmpty() && seenSeries.contains(sid))
+                continue;
             const bool sameGenre = !genre.isEmpty() && card.value("genre").toString() == genre;
             const bool sameLibrary = genre.isEmpty() && card.value("library_id").toString() == library;
-            if (sameGenre || sameLibrary)
+            if (sameGenre || sameLibrary) {
                 related << card;
+                if (!sid.isEmpty())
+                    seenSeries.insert(sid);
+            }
             if (related.size() >= 12)
                 break;
         }
@@ -869,7 +903,14 @@ void ServerClient::openMedia(const QString &id) {
                 const QVariantMap card = v.toMap();
                 if (card.value("id").toString() == id)
                     continue;
+                const QString sid = card.value("series_id").toString();
+                if (!ownSeries.isEmpty() && sid == ownSeries)
+                    continue;
+                if (!sid.isEmpty() && seenSeries.contains(sid))
+                    continue;
                 related << card;
+                if (!sid.isEmpty())
+                    seenSeries.insert(sid);
                 if (related.size() >= 12)
                     break;
             }
@@ -1516,7 +1557,7 @@ QVariantMap ServerClient::normalize(const QJsonObject &item) const {
         {"episode", item.value("episode").toInt()},
         {"library_id", libraryId},
         {"library", library},
-        {"series_id", seriesKey(libraryId, displayTitle.trimmed().isEmpty() ? catalogTitle.trimmed() : displayTitle.trimmed())},
+        {"series_id", seriesKey(catalogTitle.trimmed())},
         {"genre", genres.isEmpty() ? QString() : genres.first()},
         {"genres", joinGenres(genres)},
         {"overview", synopsis},
@@ -1540,6 +1581,7 @@ QVariantMap ServerClient::normalize(const QJsonObject &item) const {
         {"file_path", path},
         {"missing", item.value("missing").toBool()},
         {"updated_at", item.value("updated_at").toDouble()},
+        {"catalog_year", item.value("year").toInt()},
         {"tech", tech},
     };
 }

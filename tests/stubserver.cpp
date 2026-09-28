@@ -51,7 +51,9 @@ QJsonObject showItem(int number, qint64 updatedAt) {
         {"id", QStringLiteral("show-%1").arg(number)},
         {"library_id", "lib-shows"},
         {"kind", "video"},
-        {"title", QStringLiteral("Frieren %1").arg(number, 2, 10, QLatin1Char('0'))},
+        // The real catalog title is the show name only — episode numbers
+        // never leak into it, and the web groups shows by this field.
+        {"title", "Frieren"},
         {"season", 0},
         {"episode", 0},
         {"year", 0},

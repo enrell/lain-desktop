@@ -18,6 +18,32 @@ ColumnLayout {
     property string selectedLibrary: ""
     property string sortMode: "title" // title | recent
 
+    // Web breakpoints: 2/3/4/5/6 columns at sm/md/lg/xl widths; cells
+    // stretch, so the card width derives from the column width.
+    function gridColumns(w) {
+        if (w >= 1280) return 6;
+        if (w >= 1024) return 5;
+        if (w >= 768) return 4;
+        if (w >= 640) return 3;
+        return 2;
+    }
+    function cellWidth(w, cols, gap) {
+        return Math.floor((w - gap * (cols - 1)) / cols);
+    }
+
+    // Web activeType: the selected library's type flips the headings.
+    readonly property string activeType: {
+        if (selectedLibrary === "")
+            return "";
+        var libs = libraries || [];
+        for (var i = 0; i < libs.length; ++i)
+            if (libs[i].id === selectedLibrary)
+                return String(libs[i].type || "").toLowerCase();
+        return "";
+    }
+    readonly property string showHeading: activeType === "movie" ? qsTr("Movies") : qsTr("Shows")
+    readonly property string singleHeading: activeType === "movie" ? qsTr("Movies") : qsTr("Movies & specials")
+
     // A show card only exists when several files share a title; a lone
     // episode stays a single like the web's group.count === 1 rule.
     function seriesItemCount(s) {
@@ -117,6 +143,7 @@ ColumnLayout {
     spacing: 0
 
     ColumnLayout {
+        id: pageCol
         Layout.fillWidth: true
         Layout.leftMargin: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
         Layout.rightMargin: Layout.leftMargin
@@ -136,7 +163,7 @@ ColumnLayout {
                 font.letterSpacing: -0.4
             }
             Text {
-                text: qsTr("Shows open their own page with every episode; single files play from their item page.")
+                text: qsTr("Everything Lain has indexed.")
                 color: Tokens.textTertiary
                 font.family: Tokens.fontSans
                 font.pixelSize: Tokens.metaSize + 1
@@ -175,7 +202,7 @@ ColumnLayout {
             visible: showsList.length > 0
             spacing: 14
             Text {
-                text: qsTr("Shows")
+                text: showHeading
                 color: Tokens.textPrimary
                 font.family: Tokens.fontSans
                 font.pixelSize: 18
@@ -183,14 +210,21 @@ ColumnLayout {
                 font.letterSpacing: -0.3
             }
             Grid {
+                id: showsGrid
                 Layout.fillWidth: true
-                columns: Math.max(2, Math.floor((width + 12) / (Tokens.posterWidth + 12)))
-                columnSpacing: 12
-                rowSpacing: 20
+                // Columns derive from the stable container width, never the
+                // grid's own width — that feeds the positioner back into
+                // itself and loops the layout.
+                readonly property int cols: gridColumns(pageCol.width)
+                readonly property int gap: 12
+                columns: cols
+                columnSpacing: gap
+                rowSpacing: 24
                 Repeater {
                     objectName: "showsRepeater"
                     model: showsList
                     delegate: ShowCard {
+                        width: cellWidth(pageCol.width, showsGrid.cols, showsGrid.gap)
                         series: modelData
                         onOpen: s => openSeries(s)
                     }
@@ -205,7 +239,7 @@ ColumnLayout {
             spacing: 14
             Text {
                 visible: showsList.length > 0
-                text: qsTr("Movies & specials")
+                text: singleHeading
                 color: Tokens.textPrimary
                 font.family: Tokens.fontSans
                 font.pixelSize: 18
@@ -213,13 +247,17 @@ ColumnLayout {
                 font.letterSpacing: -0.3
             }
             Grid {
+                id: singlesGrid
                 Layout.fillWidth: true
-                columns: Math.max(2, Math.floor((width + 12) / (Tokens.posterWidth + 12)))
-                columnSpacing: 12
-                rowSpacing: 20
+                readonly property int cols: gridColumns(pageCol.width)
+                readonly property int gap: 12
+                columns: cols
+                columnSpacing: gap
+                rowSpacing: 24
                 Repeater {
                     model: singlesList
                     delegate: PosterCard {
+                        width: cellWidth(pageCol.width, singlesGrid.cols, singlesGrid.gap)
                         media: modelData
                         onOpen: m => openMedia(m)
                     }

@@ -27,12 +27,17 @@ function cardMeta(m) {
 function heroMeta(m) {
     if (!m)
         return "";
-    return join([
-        m.year > 0 ? m.year : "",
-        m.runtime,
-        m.rating > 0 ? "★ " + Number(m.rating).toFixed(1) : "",
-        m.genre
-    ]);
+    // Web mediaSubtitle: SxxEyy | EP n, then year, then kind.
+    var detail = "";
+    if (m.season > 0 && m.episode > 0)
+        detail = "S" + (m.season < 10 ? "0" : "") + m.season + "E" + (m.episode < 10 ? "0" : "") + m.episode;
+    else if (m.episode > 0)
+        detail = "EP " + m.episode;
+    if (m.year > 0)
+        detail = join([detail, String(m.year)]);
+    if (detail === "" && m.kind)
+        detail = m.kind;
+    return detail;
 }
 
 function searchMeta(m) {

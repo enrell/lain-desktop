@@ -8,7 +8,9 @@ import "../theme/Format.js" as Format
 // left copy readable. Eyebrow + meta stay monospace like the web labels.
 Rectangle {
     id: hero
-    height: Math.min(parent ? parent.height : 720, 860)
+    // Web hero: min(56rem, 100svh) — nearly a full viewport tall. Inside a
+    // ColumnLayout the height must come from implicitHeight, not parent.
+    implicitHeight: Math.min(896, Math.max(560, hero.Window.height || 860))
     color: Tokens.bgPrimary
     clip: true
 
@@ -16,6 +18,8 @@ Rectangle {
     property var upNext: null
     property bool resume: false
     property string accent: media && media.accent ? media.accent : "#8A93A3"
+    // clamp(2.5rem, 6.5vw, 6.5rem) ≈ 40–104px at 6.5% of viewport width.
+    readonly property int titleSize: Math.max(40, Math.min(104, Math.round(hero.width * 0.065)))
     readonly property string artwork: media && (media.cover || media.poster || media.thumb)
                                        ? (media.cover || media.poster || media.thumb) : ""
     readonly property string displayTitle: media ? (media.displayTitle && media.displayTitle !== "" ? media.displayTitle : media.title) : ""
@@ -44,15 +48,25 @@ Rectangle {
             asynchronous: true
             visible: source !== ""
         }
-        // Image fades toward the page background on the left.
+        // Web hero-monolith-shade: horizontal fade into the page background.
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
                 orientation: Gradient.Horizontal
                 GradientStop { position: 0.0; color: Tokens.bgPrimary }
-                GradientStop { position: 0.28; color: Qt.alpha(Tokens.bgPrimary, 0.55) }
-                GradientStop { position: 0.62; color: Qt.alpha(Tokens.bgPrimary, 0.12) }
-                GradientStop { position: 1.0; color: Qt.alpha(Tokens.bgPrimary, 0.25) }
+                GradientStop { position: 0.22; color: Qt.alpha(Tokens.bgPrimary, 0.96) }
+                GradientStop { position: 0.55; color: Qt.alpha(Tokens.bgPrimary, 0.58) }
+                GradientStop { position: 0.82; color: Qt.alpha(Tokens.bgPrimary, 0.08) }
+                GradientStop { position: 1.0; color: Qt.alpha(Tokens.bgPrimary, 0.08) }
+            }
+        }
+        // Second web layer: bottom-heavy vertical fade over the whole hero.
+        Rectangle {
+            anchors.fill: parent
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Qt.alpha(Tokens.bgPrimary, 0.28) }
+                GradientStop { position: 0.58; color: Qt.alpha(Tokens.bgPrimary, 0.12) }
+                GradientStop { position: 1.0; color: Tokens.bgPrimary }
             }
         }
     }
@@ -69,12 +83,12 @@ Rectangle {
         }
     }
 
-    // Copy block bottom-left, capped like the web 4xl column.
+    // Copy block vertically centered like the web justify-center column.
     ColumnLayout {
         anchors.left: parent.left
-        anchors.bottom: parent.bottom
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: 28
         anchors.leftMargin: Math.max(Tokens.pageMargin, (hero.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
-        anchors.bottomMargin: 80
         width: Math.min(hero.width - anchors.leftMargin - Tokens.pageMargin, 900)
         spacing: 0
 
@@ -91,13 +105,16 @@ Rectangle {
         Text {
             Layout.topMargin: 14
             Layout.fillWidth: true
+            // Web: clamp(2.5rem, 6.5vw, 6.5rem), uppercase, max 12ch.
+            Layout.maximumWidth: Math.max(420, Math.floor(hero.titleSize * 6.2))
             objectName: "heroTitle"
             text: hero.displayTitle
             color: "#FFFFFF"
             font.family: Tokens.fontSans
-            font.pixelSize: Tokens.heroSize
-            font.weight: Font.Bold
-            font.letterSpacing: -1.5
+            font.pixelSize: hero.titleSize
+            font.weight: Font.Black
+            font.letterSpacing: -1.8
+            font.capitalization: Font.AllUppercase
             lineHeight: 0.95
             elide: Text.ElideRight
             maximumLineCount: 3
@@ -107,7 +124,7 @@ Rectangle {
             Layout.topMargin: 20
             text: {
                 var meta = Format.heroMeta(hero.media);
-                var genres = hero.media && hero.media.genres ? String(hero.media.genres).split("·").slice(0, 2).join(" · ").trim() : "";
+                var genres = hero.media && hero.media.genres ? String(hero.media.genres).split("·").slice(0, 2).map(function (g) { return g.trim(); }).join(" · ") : "";
                 return [meta, genres].filter(function (s) { return s !== ""; }).join("  /  ");
             }
             color: Qt.alpha("#FFFFFF", 0.6)
@@ -187,8 +204,8 @@ Rectangle {
         anchors.bottom: parent.bottom
         anchors.rightMargin: 32
         anchors.bottomMargin: 32
-        width: Math.min(420, hero.width * 0.32)
-        height: 128
+        width: Math.min(416, hero.width * 0.32)
+        height: 96
         radius: 0
         color: Qt.alpha("#000000", 0.75)
         border.color: Qt.alpha("#FFFFFF", 0.1)
@@ -196,8 +213,9 @@ Rectangle {
             anchors.fill: parent
             spacing: 0
             Rectangle {
-                Layout.fillHeight: true
                 Layout.preferredWidth: 112
+                Layout.preferredHeight: 96
+                Layout.alignment: Qt.AlignTop
                 clip: true
                 color: Tokens.surface1
                 Image {

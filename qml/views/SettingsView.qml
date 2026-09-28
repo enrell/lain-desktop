@@ -53,6 +53,21 @@ ColumnLayout {
         return out;
     }
 
+    // Page margins match the other views; applied to direct children so
+    // the dense DD-027 sections keep their existing inner structure.
+    function applyMargins() {
+        var m = Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin);
+        for (var i = 0; i < root.children.length; ++i) {
+            var c = root.children[i];
+            if (c.Layout) {
+                c.Layout.leftMargin = m;
+                c.Layout.rightMargin = m;
+            }
+        }
+    }
+    onWidthChanged: applyMargins()
+    Component.onCompleted: applyMargins()
+
     function scanLabel() {
         var s = server.scanState || {};
         var state = s.state || "idle";
@@ -268,19 +283,31 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 8
             visible: root.isAdmin
-            TextInput {
-                id: libName
+            Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 160
-                color: Tokens.textPrimary
-                font.family: Tokens.fontFamily
-                font.pixelSize: Tokens.metaSize
-                Text {
+                Layout.preferredHeight: 38
+                radius: Tokens.radiusMd
+                color: Tokens.bgSecondary
+                border.color: libName.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
+                TextInput {
+                    id: libName
                     anchors.fill: parent
-                    text: qsTr("Library name")
-                    color: Tokens.textTertiary
-                    font: libName.font
-                    visible: libName.text === ""
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: Tokens.metaSize + 1
+                    Text {
+                        anchors.fill: parent
+                        text: qsTr("Library name")
+                        color: Tokens.textTertiary
+                        font: libName.font
+                        visible: libName.text === ""
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
             Text {
@@ -295,18 +322,33 @@ ColumnLayout {
                         : root.newLibType === "series" ? "anime" : "movie"
                 }
             }
-            TextInput {
-                id: libPath
+            Rectangle {
                 Layout.fillWidth: true
-                color: Tokens.textPrimary
-                font.family: Tokens.fontFamily
-                font.pixelSize: Tokens.metaSize
-                Text {
+                // Preferred width is the fill-weight in a RowLayout —
+                // without it the implicit width (0) loses the whole row.
+                Layout.preferredWidth: 400
+                Layout.preferredHeight: 38
+                radius: Tokens.radiusMd
+                color: Tokens.bgSecondary
+                border.color: libPath.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
+                TextInput {
+                    id: libPath
                     anchors.fill: parent
-                    text: qsTr("Filesystem path")
-                    color: Tokens.textTertiary
-                    font: libPath.font
-                    visible: libPath.text === ""
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: Tokens.metaSize + 1
+                    Text {
+                        anchors.fill: parent
+                        text: qsTr("Filesystem path")
+                        color: Tokens.textTertiary
+                        font: libPath.font
+                        visible: libPath.text === ""
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
             Rectangle {
@@ -411,33 +453,57 @@ ColumnLayout {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            TextInput {
-                id: newUserName
+            Rectangle {
                 Layout.preferredWidth: 150
-                color: Tokens.textPrimary
-                font.family: Tokens.fontFamily
-                font.pixelSize: Tokens.metaSize
-                Text {
+                Layout.preferredHeight: 38
+                radius: Tokens.radiusMd
+                color: Tokens.bgSecondary
+                border.color: newUserName.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
+                TextInput {
+                    id: newUserName
                     anchors.fill: parent
-                    text: qsTr("Username")
-                    color: Tokens.textTertiary
-                    font: newUserName.font
-                    visible: newUserName.text === ""
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: Tokens.metaSize + 1
+                    Text {
+                        anchors.fill: parent
+                        text: qsTr("Username")
+                        color: Tokens.textTertiary
+                        font: newUserName.font
+                        visible: newUserName.text === ""
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
-            TextInput {
-                id: newUserPass
+            Rectangle {
                 Layout.preferredWidth: 150
-                echoMode: TextInput.Password
-                color: Tokens.textPrimary
-                font.family: Tokens.fontFamily
-                font.pixelSize: Tokens.metaSize
-                Text {
+                Layout.preferredHeight: 38
+                radius: Tokens.radiusMd
+                color: Tokens.bgSecondary
+                border.color: newUserPass.activeFocus ? Tokens.themeAccent : Tokens.borderSubtle
+                TextInput {
+                    id: newUserPass
                     anchors.fill: parent
-                    text: qsTr("Password")
-                    color: Tokens.textTertiary
-                    font: newUserPass.font
-                    visible: newUserPass.text === ""
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    echoMode: TextInput.Password
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: Tokens.metaSize + 1
+                    Text {
+                        anchors.fill: parent
+                        text: qsTr("Password")
+                        color: Tokens.textTertiary
+                        font: newUserPass.font
+                        visible: newUserPass.text === ""
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
             Rectangle {

@@ -3,6 +3,7 @@
 #include <QStandardPaths>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QDir>
 
 #include "LocaleManager.h"
 #include "OmarchyTheme.h"
@@ -29,14 +30,24 @@ public:
 
 public slots:
     void qmlEngineAvailable(QQmlEngine *engine) {
-        if (!m_stub) {
-            m_stub = new StubServer(this);
-            if (!m_stub->listen())
-                qWarning("stub server failed to listen");
-        }
-        if (!m_server) {
+        const QString realUrl = qEnvironmentVariable("LAIN_SERVER_URL");
+        const QString realToken = qEnvironmentVariable("LAIN_TOKEN");
+        if (!realUrl.isEmpty() && !realToken.isEmpty()) {
+            // Visual-QA mode: real data so screenshots mirror the web app.
+            // start() picks the token up from QSettings like a saved login.
+            QSettings().setValue(QStringLiteral("auth/token"), realToken);
             m_server = new ServerClient(this);
-            m_server->setServerUrl(m_stub->baseUrl());
+            m_server->setServerUrl(realUrl);
+        } else {
+            if (!m_stub) {
+                m_stub = new StubServer(this);
+                if (!m_stub->listen())
+                    qWarning("stub server failed to listen");
+            }
+            if (!m_server) {
+                m_server = new ServerClient(this);
+                m_server->setServerUrl(m_stub->baseUrl());
+            }
         }
         if (!m_theme)
             m_theme = new OmarchyTheme(this);
@@ -55,6 +66,9 @@ public slots:
         engine->rootContext()->setContextProperty("stub", m_stub);
         engine->rootContext()->setContextProperty("buildTs", QStringLiteral("test"));
         engine->rootContext()->setContextProperty("appVersion", QStringLiteral("test"));
+        engine->rootContext()->setContextProperty(
+            "shotsDir", QDir(QCoreApplication::applicationDirPath() + QStringLiteral("/../shots"))
+                            .absolutePath());
 
         m_server->start();
     }

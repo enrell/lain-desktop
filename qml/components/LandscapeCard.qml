@@ -8,7 +8,7 @@ import "../theme/Format.js" as Format
 Item {
     id: card
     width: Tokens.landscapeWidth
-    height: Tokens.landscapeWidth * 9 / 16 + 44
+    height: width * 9 / 16 + 44
     property var media
     property string accent: media && media.accent ? media.accent : "#8A93A3"
     // The still frame is what the web continue-card shows; artwork is a

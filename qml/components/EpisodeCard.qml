@@ -8,6 +8,9 @@ import "../theme/Color.js" as Color
 Rectangle {
     id: card
     property var item
+    // The web hides the per-episode title line unless it differs from
+    // the group title (real episode titles still show).
+    property string groupTitle: ""
     signal play(var item)
     signal open(var item)
 
@@ -103,7 +106,7 @@ Rectangle {
         }
         Text {
             Layout.fillWidth: true
-            visible: item && item.title && item.title !== ""
+            visible: item && item.title && item.title !== "" && item.title !== card.groupTitle
             text: item ? (item.displayTitle && item.displayTitle !== "" ? item.displayTitle : item.title) : ""
             color: Tokens.textPrimary
             font.family: Tokens.fontSans

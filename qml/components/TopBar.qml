@@ -64,9 +64,8 @@ Rectangle {
                 font.weight: Font.Bold
                 font.letterSpacing: 4
             }
-            MouseArea {
-                anchors.fill: parent
-                onClicked: bar.navigate("home")
+            TapHandler {
+                onTapped: bar.navigate("home")
             }
         }
 

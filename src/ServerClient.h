@@ -221,7 +221,7 @@ private:
     // Presentation helpers
     static QString humanSize(qint64 bytes);
     static QString humanDuration(double seconds);
-    static QString seriesKey(const QString &libraryId, const QString &seriesTitle);
+    static QString seriesKey(const QString &seriesTitle);
     static QString seriesTitleFor(const QVariantMap &card);
     static QString fileExtension(const QString &path);
     static QString accentFor(const QString &seed);
