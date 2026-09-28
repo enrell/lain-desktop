@@ -14,6 +14,8 @@ Item {
 
     property var media
     property var series: null
+    // Exposed for tests; the player internals otherwise stay private.
+    readonly property alias mpvItem: mpv
     property bool hasStream: false
     property bool controlsVisible: true
     property string osdText: ""
@@ -215,7 +217,14 @@ Item {
         id: hideTimer
         interval: 2800
         repeat: false
-        onTriggered: { if (!mpv.paused && hasStream) controlsVisible = false; }
+        // Hover over the chrome itself must not count as idle — otherwise
+        // controls vanish under the cursor and the click lands on video.
+        onTriggered: {
+            if (!mpv.paused && hasStream && !topBarHover.containsMouse
+                    && !bottomBarHover.containsMouse
+                    && !audioPopup.visible && !subPopup.visible)
+                controlsVisible = false;
+        }
     }
     Timer {
         id: osdTimer
@@ -345,6 +354,12 @@ Item {
             GradientStop { position: 0.0; color: Qt.alpha(Tokens.bgPrimary, 0.75) }
             GradientStop { position: 1.0; color: Qt.alpha(Tokens.bgPrimary, 0.0) }
         }
+        MouseArea {
+            id: topBarHover
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+        }
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 16
@@ -388,6 +403,12 @@ Item {
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.alpha(Tokens.bgPrimary, 0.0) }
             GradientStop { position: 1.0; color: Qt.alpha(Tokens.bgPrimary, 0.85) }
+        }
+        MouseArea {
+            id: bottomBarHover
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
         }
         ColumnLayout {
             anchors.fill: parent

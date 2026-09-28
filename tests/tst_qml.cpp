@@ -17,6 +17,9 @@ class TestSetup : public QObject {
     Q_OBJECT
 public:
     TestSetup() {
+        // libmpv refuses to initialize without a C numeric locale —
+        // mirror main.cpp so MpvItem behaves like the real app in tests.
+        std::setlocale(LC_NUMERIC, "C");
         QStandardPaths::setTestModeEnabled(true);
         QCoreApplication::setOrganizationName(QStringLiteral("lain-test"));
         QCoreApplication::setApplicationName(QStringLiteral("lain-test"));
@@ -29,6 +32,13 @@ public:
     }
 
 public slots:
+    void applicationAvailable() {
+        // Qt restores the environment locale during QGuiApplication
+        // setup — libmpv only accepts C. Mirror main.cpp and set it
+        // again after the app exists.
+        std::setlocale(LC_NUMERIC, "C");
+    }
+
     void qmlEngineAvailable(QQmlEngine *engine) {
         const QString realUrl = qEnvironmentVariable("LAIN_SERVER_URL");
         const QString realToken = qEnvironmentVariable("LAIN_TOKEN");

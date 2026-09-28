@@ -76,12 +76,29 @@ private:
 MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     m_shaderInfo = tr("Anime4K off");
     m_mpv = mpv_create();
-    if (!m_mpv)
+    if (!m_mpv) {
+        qWarning() << "mpv_create returned null (LC_NUMERIC"
+                   << setlocale(LC_NUMERIC, nullptr) << ")";
+        m_errorText = tr("mpv could not be created");
+        emit errorTextChanged();
         return;
-    mpv_set_option_string(m_mpv, "vo", "libmpv");
-    mpv_set_option_string(m_mpv, "hwdec", "auto");
-    mpv_set_option_string(m_mpv, "profile", "gpu-hq");
-    mpv_initialize(m_mpv);
+    }
+    // Bad options make mpv_initialize fail and leave a dead handle —
+    // report each one instead of silently disabling playback.
+    for (const auto &opt : {std::pair{"vo", "libmpv"}, std::pair{"hwdec", "auto"},
+                            std::pair{"profile", "gpu-hq"}}) {
+        const int st = mpv_set_option_string(m_mpv, opt.first, opt.second);
+        if (st < 0)
+            qWarning() << "mpv option" << opt.first << "rejected:" << mpv_error_string(st);
+    }
+    const int initStatus = mpv_initialize(m_mpv);
+    if (initStatus < 0) {
+        qWarning() << "mpv_initialize failed:" << mpv_error_string(initStatus);
+        m_errorText = tr("mpv failed to initialize");
+        emit errorTextChanged();
+        // Keep the handle so commands are safe no-ops; the event thread
+        // still exits cleanly via m_running.
+    }
 
     mpv_observe_property(m_mpv, 0, "time-pos", MPV_FORMAT_DOUBLE);
     mpv_observe_property(m_mpv, 0, "duration", MPV_FORMAT_DOUBLE);
