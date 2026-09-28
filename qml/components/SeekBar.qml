@@ -3,6 +3,7 @@ import Lain
 
 // Custom slider without QtQuick.Controls: drag interaction and hover thumb.
 Rectangle {
+    id: bar
     color: "transparent"
     height: 28
 
@@ -48,16 +49,18 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         onPressed: mouse => {
-            scrubbing = true;
-            scrubbed(from + (to - from) * Math.max(0, Math.min(1, mouse.x / width)));
+            bar.scrubbing = true;
+            bar.scrubbed(bar.from + (bar.to - bar.from) * Math.max(0, Math.min(1, mouse.x / width)));
         }
         onPositionChanged: mouse => {
             if (pressed)
-                scrubbed(from + (to - from) * Math.max(0, Math.min(1, mouse.x / width)));
+                bar.scrubbed(bar.from + (bar.to - bar.from) * Math.max(0, Math.min(1, mouse.x / width)));
         }
         onReleased: mouse => {
-            scrubbing = false;
-            released(from + (to - from) * Math.max(0, Math.min(1, mouse.x / width)));
+            bar.scrubbing = false;
+            // MouseArea has its own `released` signal — qualify the SeekBar
+            // signal or it recurses into this same handler.
+            bar.released(bar.from + (bar.to - bar.from) * Math.max(0, Math.min(1, mouse.x / width)));
         }
     }
 }

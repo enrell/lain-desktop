@@ -26,6 +26,8 @@ Rectangle {
         hoverEnabled: true
         onEntered: parent.color = Tokens.hoverFill
         onExited: parent.color = "transparent"
-        onClicked: pressed()
+        // `pressed` alone resolves to the MouseArea's own bool property —
+        // it must emit the component's signal, not call a bool.
+        onClicked: parent.pressed()
     }
 }

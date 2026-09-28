@@ -8,7 +8,9 @@ import "../components"
 Item {
     id: playerRoot
     Layout.fillWidth: true
-    Layout.preferredHeight: Math.max(620, page.height)
+    // Full viewport height like the web player. `page` is an id in
+    // Main.qml — invisible from this file — so bind to the window.
+    Layout.preferredHeight: Math.max(620, (playerRoot.Window ? playerRoot.Window.height : 0) - Tokens.headerHeight)
 
     property var media
     property var series: null
