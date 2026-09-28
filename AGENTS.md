@@ -21,6 +21,47 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+## Visual QA loop (mandatory for layout/UI work)
+
+`verify()`-style tests do not see pixels. Any task that changes layout,
+spacing, colors, or imagery is unfinished until reviewed via screenshot.
+Screenshots are expensive context: **one image per iteration, never a
+batch**. Follow this protocol strictly.
+
+1. Pick ONE surface, smallest first — a single card/component before the
+   page that composes it. Shell order: cards → Hero/MediaRow → views →
+   TopBar → Player rail.
+2. Produce exactly one PNG for it:
+   ```sh
+   QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_SCALE_FACTOR=1 \
+     ./build/tests/tst_qml -input tests/qml/tst_shot_<surface>.qml
+   ```
+   Each `tst_shot_*.qml` mounts the surface inside
+   `Rectangle { color: Tokens.bgPrimary; width: 1440 }` (a bare Item grabs
+   transparent and renders white) and calls `grabImage(...).save()` into
+   `build/shots/<surface>.png`.
+3. Read ONLY that PNG. Write the concrete bugs as a bullet list
+   (alignment, clipping, overflow, contrast, spacing) before editing.
+   Fetch a web reference only when a bug is ambiguous:
+   ```sh
+   chromium --headless --screenshot=/tmp/web-<surface>.png \
+     --window-size=1440,900 <url>
+   ```
+   At most two images in context at once (QML shot + its web reference).
+4. Fix, rebuild, re-shoot, re-read. Repeat until the surface is clean.
+5. Move to the next surface. Do not open another surface's PNG while the
+   current one is unresolved.
+
+Determinism rules:
+
+- fixed capture width per surface (1440 default; 1920 only when checking
+  density); `QT_SCALE_FACTOR=1`; stub-server data only, never a real one;
+- `MpvItem` renders nothing under the software backend — judge the player
+  by its chrome and episode rail, never by the video area;
+- shots live under `build/shots/` and are never committed;
+- optional `grabImage(...).equals(baseline)` asserts may be added later,
+  but the read-and-fix loop above is the contract for layout changes.
+
 ## Commit discipline
 
 Short imperative subjects. This repo is the client; the server lives in
