@@ -64,8 +64,8 @@ TestCase {
         }
         pv.controlsVisible = true;
         var before = pv.mpvItem.paused;
-        // Play/pause is the second button in the bottom control row.
-        mouseClick(pv, 90, pv.height - 55);
+        // Accent play/pause is the first transport control (x=20 margins).
+        mouseClick(pv, 42, pv.height - 32);
         tryCompare(pv.mpvItem, "paused", !before, 2000);
     }
 
@@ -96,8 +96,8 @@ TestCase {
         }
         pv.controlsVisible = true;
         var before = pv.mpvItem.muted;
-        // Mute button is the first control on the right side of the bar.
-        mouseClick(pv, 1112, pv.height - 55);
+        // Mute sits after play, -10s and +10s in the transport row.
+        mouseClick(pv, 186, pv.height - 32);
         tryCompare(pv.mpvItem, "muted", !before, 2000);
     }
 }

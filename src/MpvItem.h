@@ -19,6 +19,7 @@ class MpvItem : public QQuickFramebufferObject {
     Q_PROPERTY(double duration READ duration NOTIFY durationChanged)
     Q_PROPERTY(bool paused READ paused NOTIFY pausedChanged)
     Q_PROPERTY(double volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(double speed READ speed WRITE setSpeed NOTIFY speedChanged)
     Q_PROPERTY(bool muted READ muted WRITE setMuted NOTIFY mutedChanged)
     Q_PROPERTY(QVariantList audioTracks READ audioTracks NOTIFY tracksChanged)
     Q_PROPERTY(QVariantList subtitleTracks READ subtitleTracks NOTIFY tracksChanged)
@@ -37,6 +38,7 @@ public:
     double duration() const { return m_duration; }
     bool paused() const { return m_paused; }
     double volume() const { return m_volume; }
+    double speed() const { return m_speed; }
     bool muted() const { return m_muted; }
     QVariantList audioTracks() const { return m_audioTracks; }
     QVariantList subtitleTracks() const { return m_subtitleTracks; }
@@ -58,6 +60,7 @@ public:
     Q_INVOKABLE void seek(double seconds);
     Q_INVOKABLE void seekBy(double delta);
     Q_INVOKABLE void setVolume(double v);
+    Q_INVOKABLE void setSpeed(double v);
     Q_INVOKABLE void setMuted(bool m);
     Q_INVOKABLE void setAudioTrack(int id);
     Q_INVOKABLE void setSubtitleTrack(int id); // <0 = off
@@ -72,6 +75,7 @@ signals:
     void durationChanged();
     void pausedChanged();
     void volumeChanged();
+    void speedChanged();
     void mutedChanged();
     void tracksChanged();
     void shaderChanged();
@@ -96,6 +100,7 @@ private:
     double m_duration = 0.0;
     bool m_paused = false;
     double m_volume = 100.0;
+    double m_speed = 1.0;
     bool m_muted = false;
     QVariantList m_audioTracks;
     QVariantList m_subtitleTracks;

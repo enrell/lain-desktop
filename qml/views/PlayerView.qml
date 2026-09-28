@@ -8,9 +8,9 @@ import "../components"
 Item {
     id: playerRoot
     Layout.fillWidth: true
-    // Full viewport height like the web player. `page` is an id in
-    // Main.qml — invisible from this file — so bind to the window.
-    Layout.preferredHeight: Math.max(620, (playerRoot.Window ? playerRoot.Window.height : 0) - Tokens.headerHeight)
+    // Full viewport height like the web player — the top bar hides on
+    // this route, so subtract nothing or the deck letterboxes the window.
+    Layout.preferredHeight: Math.max(620, playerRoot.Window ? playerRoot.Window.height : 0)
 
     property var media
     property var series: null
@@ -23,6 +23,8 @@ Item {
     property real pendingResume: 0
     property bool resumePending: false
     property string playError: ""
+    property bool ended: false
+    property real resumedFrom: 0
 
     signal toggleFullscreen()
     signal back()
@@ -110,6 +112,17 @@ Item {
     function seekBy(d) { mpv.seekBy(d); wake(); }
     function adjustVolume(d) { mpv.setVolume(mpv.volume + d); osd(qsTr("Volume %1").arg(Math.round(mpv.volume + d))); wake(); }
     function toggleMute() { mpv.setMuted(!mpv.muted); wake(); }
+    // At EOF a plain unpause is a no-op — restart from the beginning.
+    function replayOrResume() {
+        if (ended) {
+            mpv.seek(0);
+            mpv.setPaused(false);
+            ended = false;
+        } else {
+            togglePause();
+        }
+        wake();
+    }
     function cycleAudio() { mpv.cycleAudio(); osd(qsTr("Audio")); wake(); }
     function cycleSubtitle() { mpv.cycleSubtitle(); osd(qsTr("Subtitles")); wake(); }
     function cycleShader() { mpv.cycleShaderPreset(); osd(mpv.shaderInfo); wake(); }
@@ -140,10 +153,8 @@ Item {
     // Esc tier 0: close open chrome (track pickers) before the route's
     // fullscreen/back handling. Returns true when it closed something.
     function closeChrome() {
-        if (audioPopup.visible || subPopup.visible || shaderPopup.visible) {
-            audioPopup.visible = false;
-            subPopup.visible = false;
-            shaderPopup.visible = false;
+        if (settingsPanel.visible) {
+            settingsPanel.visible = false;
             return true;
         }
         return false;
@@ -175,16 +186,20 @@ Item {
     Connections {
         target: server
         function onPlaybackReady(url, positionSec, durationSec) {
+            playerRoot.ended = false;
             if (!playerRoot.visible)
                 return;
             playerRoot.playError = "";
             playerRoot.hasStream = true;
+            playerRoot.resumedFrom = 0;
             mpv.play(url);
             // DD-031: auto-resume is a user default, not forced behavior.
             if (server.autoResume && positionSec > 5 && (durationSec <= 0 || positionSec < durationSec - 5)) {
                 playerRoot.pendingResume = positionSec;
                 playerRoot.resumePending = true;
-                playerRoot.osd(qsTr("Resuming…"));
+                // Web parity: the banner lives until dismissed so the
+                // viewer sees where playback continued from (DD-031).
+                playerRoot.resumedFrom = positionSec;
             } else {
                 playerRoot.resumePending = false;
                 playerRoot.pendingResume = 0;
@@ -207,6 +222,7 @@ Item {
             }
         }
         function onEndFile(eof) {
+            playerRoot.ended = eof;
             if (eof && playerRoot.media && playerRoot.media.id && mpv.duration > 0) {
                 server.reportProgress(playerRoot.media.id, mpv.duration, mpv.duration, true);
                 // DD-031: autoplay the next episode when enabled (global
@@ -252,9 +268,7 @@ Item {
         anchors.rightMargin: playerRoot.sidebarWidth
         z: 2
         onClicked: {
-            audioPopup.visible = false;
-            subPopup.visible = false;
-            shaderPopup.visible = false;
+            settingsPanel.visible = false;
             togglePause();
         }
     }
@@ -268,7 +282,7 @@ Item {
         onTriggered: {
             if (!mpv.paused && hasStream && !topBarHover.containsMouse
                     && !bottomBarHover.containsMouse
-                    && !audioPopup.visible && !subPopup.visible)
+                    && !settingsPanel.visible)
                 controlsVisible = false;
         }
     }
@@ -386,6 +400,101 @@ Item {
         }
     }
 
+    // Resume banner — web parity: "Resuming from X · Start over".
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.topMargin: 80
+        anchors.leftMargin: 16
+        z: 6
+        visible: playerRoot.resumedFrom > 0
+        height: 40
+        width: resumeRow.implicitWidth + 24
+        radius: Tokens.radiusMd
+        color: Qt.alpha(Tokens.bgPrimary, 0.95)
+        border.color: Tokens.borderSubtle
+        Row {
+            id: resumeRow
+            anchors.centerIn: parent
+            spacing: 12
+            Text {
+                text: qsTr("Resuming from %1").arg(fmt(playerRoot.resumedFrom))
+                color: Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize
+            }
+            Rectangle {
+                width: startOverText.implicitWidth + 8
+                height: 22
+                radius: 4
+                color: "transparent"
+                activeFocusOnTab: true
+                border.width: activeFocus ? 2 : 0
+                border.color: Tokens.themeAccent
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Start over")
+                Keys.onSpacePressed: { mpv.seek(0); playerRoot.resumedFrom = 0; }
+                Keys.onReturnPressed: { mpv.seek(0); playerRoot.resumedFrom = 0; }
+                Keys.onEnterPressed: { mpv.seek(0); playerRoot.resumedFrom = 0; }
+                Text {
+                    id: startOverText
+                    anchors.centerIn: parent
+                    text: qsTr("Start over")
+                    color: Tokens.themeAccent
+                    font.family: Tokens.fontSans
+                    font.pixelSize: Tokens.metaSize
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: { mpv.seek(0); playerRoot.resumedFrom = 0; }
+                }
+            }
+            Text {
+                text: "✕"
+                color: Tokens.textTertiary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: playerRoot.resumedFrom = 0
+                }
+            }
+        }
+    }
+
+    // Paused-at-start / ended: the web player's large center affordance.
+    Rectangle {
+        anchors.centerIn: parent
+        anchors.horizontalCenterOffset: -playerRoot.sidebarWidth / 2
+        z: 5
+        width: 80
+        height: 80
+        radius: 40
+        visible: playerRoot.hasStream && playerRoot.controlsVisible
+            && (playerRoot.ended || (mpv.paused && mpv.position < 1))
+        color: Qt.alpha(Tokens.bgPrimary, 0.6)
+        border.color: Qt.alpha(Tokens.textPrimary, 0.25)
+        activeFocusOnTab: visible
+        border.width: activeFocus ? 2 : 1
+        Accessible.role: Accessible.Button
+        Accessible.name: playerRoot.ended ? qsTr("Play again") : qsTr("Play")
+        Keys.onSpacePressed: playerRoot.replayOrResume()
+        Keys.onReturnPressed: playerRoot.replayOrResume()
+        Keys.onEnterPressed: playerRoot.replayOrResume()
+        Text {
+            anchors.centerIn: parent
+            anchors.horizontalCenterOffset: 4
+            text: "\uf04b"
+            color: Tokens.textPrimary
+            font.family: Tokens.fontFamily
+            font.pixelSize: 36
+        }
+        MouseArea {
+            anchors.fill: parent
+            onClicked: playerRoot.replayOrResume()
+        }
+    }
+
     // Barra superior
     Rectangle {
         anchors.left: parent.left
@@ -428,12 +537,6 @@ Item {
                 font.pixelSize: 16
                 elide: Text.ElideRight
             }
-            Text {
-                text: mpv.shaderInfo
-                color: Tokens.textTertiary
-                font.family: Tokens.fontFamily
-                font.pixelSize: Tokens.metaSize - 1
-            }
         }
     }
 
@@ -463,15 +566,11 @@ Item {
             anchors.rightMargin: 20
             anchors.bottomMargin: 10
             spacing: 2
+            // Web deck: a single full-width seek strip with the combined
+            // "current / total" readout on the right.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
-                Text {
-                    text: fmt(timelineBar.scrubbing ? playerRoot.scrubValue : mpv.position)
-                    color: Tokens.textSecondary
-                    font.family: Tokens.fontFamily
-                    font.pixelSize: Tokens.metaSize
-                }
                 SeekBar {
                     id: timelineBar
                     Layout.fillWidth: true
@@ -488,19 +587,48 @@ Item {
                     }
                 }
                 Text {
-                    text: fmt(mpv.duration)
+                    text: fmt(timelineBar.scrubbing ? playerRoot.scrubValue : mpv.position)
+                          + " / " + fmt(mpv.duration)
                     color: Tokens.textSecondary
                     font.family: Tokens.fontFamily
                     font.pixelSize: Tokens.metaSize
                 }
             }
+            // Transport: accent play first (web's primary action), then
+            // seek, mute+volume, settings gear and fullscreen on the right.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 4
+                Rectangle {
+                    implicitWidth: 44
+                    implicitHeight: 44
+                    radius: 10
+                    color: primaryHover.containsMouse ? Qt.darker(Tokens.themeAccent, 1.15)
+                                                     : Tokens.themeAccent
+                    activeFocusOnTab: true
+                    border.width: activeFocus ? 2 : 0
+                    border.color: Tokens.textPrimary
+                    Accessible.role: Accessible.Button
+                    Accessible.name: mpv.paused ? qsTr("Play") : qsTr("Pause")
+                    Keys.onSpacePressed: playerRoot.togglePause()
+                    Keys.onReturnPressed: playerRoot.togglePause()
+                    Keys.onEnterPressed: playerRoot.togglePause()
+                    Text {
+                        anchors.centerIn: parent
+                        text: mpv.paused ? "\uf04b" : "\uf04c"
+                        color: Tokens.bgPrimary
+                        font.family: Tokens.fontFamily
+                        font.pixelSize: 18
+                    }
+                    MouseArea {
+                        id: primaryHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: playerRoot.togglePause()
+                    }
+                }
                 PlayerButton { glyph: "-10s"; glyphSize: 12; bold: true; label: qsTr("Rewind 10 seconds"); onPressed: seekBy(-10) }
-                PlayerButton { glyph: mpv.paused ? "\uf04b" : "\uf04c"; glyphSize: 18; label: mpv.paused ? qsTr("Play") : qsTr("Pause"); onPressed: togglePause() }
                 PlayerButton { glyph: "+10s"; glyphSize: 12; bold: true; label: qsTr("Forward 10 seconds"); onPressed: seekBy(10) }
-                Item { Layout.fillWidth: true }
                 PlayerButton { glyph: mpv.muted ? "\uf026" : "\uf028"; glyphSize: 16; label: mpv.muted ? qsTr("Unmute") : qsTr("Mute"); onPressed: toggleMute() }
                 SeekBar {
                     Layout.preferredWidth: 90
@@ -511,151 +639,224 @@ Item {
                     onScrubbed: v => mpv.setVolume(v)
                     onReleased: v => mpv.setVolume(v)
                 }
-                PlayerButton { glyph: "\uf001"; glyphSize: 15; label: qsTr("Audio track"); onPressed: { audioPopup.visible = !audioPopup.visible; subPopup.visible = false; } }
-                PlayerButton { glyph: "\uf20a"; glyphSize: 15; label: qsTr("Subtitles"); onPressed: { subPopup.visible = !subPopup.visible; audioPopup.visible = false; } }
-                PlayerButton { glyph: "\uf0d0"; glyphSize: 15; label: qsTr("Video effects"); onPressed: { shaderPopup.visible = !shaderPopup.visible; audioPopup.visible = false; subPopup.visible = false; } }
+                Item { Layout.fillWidth: true }
+                PlayerButton { glyph: "\uf013"; glyphSize: 15; label: qsTr("Playback settings"); onPressed: { settingsPanel.visible = !settingsPanel.visible; } }
                 PlayerButton { glyph: "\uf065"; glyphSize: 14; label: qsTr("Toggle fullscreen"); onPressed: toggleFullscreen() }
             }
         }
     }
 
-    // Audio-track popup.
+    // Playback settings — the web player's gear panel (Speed, Effects,
+    // Audio, Subtitles in one surface instead of three popups).
     Rectangle {
-        id: audioPopup
+        id: settingsPanel
         visible: false
         z: 6
         anchors.right: parent.right
         anchors.rightMargin: playerRoot.sidebarWidth + 20
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 118
-        width: 280
-        height: Math.min(300, trackList.implicitHeight + 28)
+        width: 320
+        height: Math.min(420, settingsCol.implicitHeight + 28)
         radius: Tokens.radiusMd
         color: Tokens.bgElevated
         border.color: Tokens.borderSubtle
-        Column {
-            id: trackList
+        Flickable {
             anchors.fill: parent
             anchors.margins: 14
-            spacing: 4
-            Text { text: qsTr("Audio"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-            Repeater {
-                model: mpv.audioTracks
-                delegate: Text {
-                    width: trackList.width
-                    text: (mpv.audioId === modelData.id ? "● " : "○ ") + trackLabel(modelData)
-                    color: mpv.audioId === modelData.id ? Tokens.themeAccent : Tokens.textPrimary
-                    font.family: Tokens.fontFamily
-                    font.pixelSize: Tokens.metaSize
-                    elide: Text.ElideRight
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: { mpv.setAudioTrack(modelData.id); audioPopup.visible = false; }
+            contentWidth: width
+            contentHeight: settingsCol.implicitHeight
+            clip: true
+            Column {
+                id: settingsCol
+                width: parent.width
+                spacing: 10
+                Text {
+                    text: qsTr("Playback settings")
+                    color: Tokens.textPrimary
+                    font.family: Tokens.fontSans
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                }
+                Text { text: qsTr("Speed"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
+                Row {
+                    spacing: 6
+                    Repeater {
+                        model: [0.5, 0.75, 1, 1.25, 1.5, 2]
+                        delegate: Rectangle {
+                            required property double modelData
+                            implicitWidth: chipText.implicitWidth + 16
+                            implicitHeight: 26
+                            radius: 13
+                            color: Math.abs(mpv.speed - modelData) < 0.01 ? Tokens.themeAccent : "transparent"
+                            activeFocusOnTab: true
+                            border.width: activeFocus ? 2 : 1
+                            border.color: activeFocus ? Tokens.themeAccent
+                                : (Math.abs(mpv.speed - modelData) < 0.01 ? Tokens.themeAccent : Tokens.borderSubtle)
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData === 1 ? qsTr("Normal speed") : modelData + "x speed"
+                            Keys.onSpacePressed: mpv.setSpeed(modelData)
+                            Keys.onReturnPressed: mpv.setSpeed(modelData)
+                            Keys.onEnterPressed: mpv.setSpeed(modelData)
+                            Text {
+                                id: chipText
+                                anchors.centerIn: parent
+                                text: modelData === 1 ? qsTr("Normal") : modelData + "x"
+                                color: Math.abs(mpv.speed - modelData) < 0.01 ? Tokens.bgPrimary : Tokens.textSecondary
+                                font.family: Tokens.fontSans
+                                font.pixelSize: 11
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: mpv.setSpeed(modelData)
+                            }
+                        }
                     }
                 }
-            }
-        }
-    }
-
-    // Subtitle-track popup.
-    Rectangle {
-        id: subPopup
-        visible: false
-        z: 6
-        anchors.right: parent.right
-        anchors.rightMargin: playerRoot.sidebarWidth + 20
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 118
-        width: 280
-        height: Math.min(300, subList.implicitHeight + 28)
-        radius: Tokens.radiusMd
-        color: Tokens.bgElevated
-        border.color: Tokens.borderSubtle
-        Column {
-            id: subList
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 4
-            Text { text: qsTr("Subtitles"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-            Text {
-                width: subList.width
-                text: (mpv.subtitleId < 0 ? "● " : "○ ") + qsTr("Off")
-                color: mpv.subtitleId < 0 ? Tokens.themeAccent : Tokens.textPrimary
-                font.family: Tokens.fontFamily
-                font.pixelSize: Tokens.metaSize
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: { mpv.setSubtitleTrack(-1); subPopup.visible = false; }
+                Text { text: qsTr("Effects"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
+                Repeater {
+                    model: mpv.shaderModes
+                    delegate: shaderRow
                 }
-            }
-            Repeater {
-                model: mpv.subtitleTracks
-                delegate: Text {
-                    width: subList.width
-                    text: (mpv.subtitleId === modelData.id ? "● " : "○ ") + trackLabel(modelData)
-                    color: mpv.subtitleId === modelData.id ? Tokens.themeAccent : Tokens.textPrimary
+                Text {
+                    text: qsTr("Audio")
+                    color: Tokens.textTertiary
                     font.family: Tokens.fontFamily
                     font.pixelSize: Tokens.metaSize
-                    elide: Text.ElideRight
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: { mpv.setSubtitleTrack(modelData.id); subPopup.visible = false; }
-                    }
+                    visible: mpv.audioTracks.length > 0
                 }
-            }
-        }
-    }
-
-    // Video-effects picker — the web player's Effects selector (DD-035):
-    // the bundled Anime4K presets, chosen by name instead of blind-cycled.
-    Rectangle {
-        id: shaderPopup
-        visible: false
-        z: 6
-        anchors.right: parent.right
-        anchors.rightMargin: playerRoot.sidebarWidth + 20
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 118
-        width: 280
-        height: Math.min(300, shaderList.implicitHeight + 28)
-        radius: Tokens.radiusMd
-        color: Tokens.bgElevated
-        border.color: Tokens.borderSubtle
-        Column {
-            id: shaderList
-            anchors.fill: parent
-            anchors.margins: 14
-            spacing: 4
-            Text { text: qsTr("Effects"); color: Tokens.textTertiary; font.family: Tokens.fontFamily; font.pixelSize: Tokens.metaSize }
-            Repeater {
-                model: mpv.shaderModes
-                delegate: Rectangle {
-                    required property var modelData
-                    width: shaderList.width
-                    height: 30
+                Repeater {
+                    model: mpv.audioTracks
+                    delegate: audioRow
+                }
+                Text {
+                    text: qsTr("Subtitles")
+                    color: Tokens.textTertiary
+                    font.family: Tokens.fontFamily
+                    font.pixelSize: Tokens.metaSize
+                    visible: mpv.subtitleTracks.length > 0
+                }
+                Rectangle {
+                    width: parent.width
+                    height: 26
                     radius: 6
                     color: "transparent"
                     activeFocusOnTab: true
                     border.width: activeFocus ? 2 : 0
                     border.color: Tokens.themeAccent
                     Accessible.role: Accessible.Button
-                    Accessible.name: playerRoot.shaderLabel(modelData)
-                    Keys.onSpacePressed: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
-                    Keys.onReturnPressed: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
-                    Keys.onEnterPressed: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
+                    Accessible.name: qsTr("Subtitles off")
+                    Keys.onSpacePressed: mpv.setSubtitleTrack(-1)
+                    Keys.onReturnPressed: mpv.setSubtitleTrack(-1)
+                    Keys.onEnterPressed: mpv.setSubtitleTrack(-1)
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: (mpv.shaderPreset === modelData ? "● " : "○ ") + playerRoot.shaderLabel(modelData)
-                        color: mpv.shaderPreset === modelData ? Tokens.themeAccent : Tokens.textPrimary
+                        text: (mpv.subtitleId < 0 ? "● " : "○ ") + qsTr("Off")
+                        color: mpv.subtitleId < 0 ? Tokens.themeAccent : Tokens.textPrimary
                         font.family: Tokens.fontSans
                         font.pixelSize: Tokens.metaSize
-                        elide: Text.ElideRight
                     }
                     MouseArea {
                         anchors.fill: parent
-                        onClicked: { mpv.setShaderPreset(modelData); osd(mpv.shaderInfo); shaderPopup.visible = false; }
+                        onClicked: mpv.setSubtitleTrack(-1)
                     }
                 }
+                Repeater {
+                    model: mpv.subtitleTracks
+                    delegate: subtitleRow
+                }
+            }
+        }
+    }
+
+    // Row delegates shared by the settings panel sections.
+    Component {
+        id: shaderRow
+        Rectangle {
+            required property var modelData
+            width: settingsCol.width
+            height: 26
+            radius: 6
+            color: "transparent"
+            activeFocusOnTab: true
+            border.width: activeFocus ? 2 : 0
+            border.color: Tokens.themeAccent
+            Accessible.role: Accessible.Button
+            Accessible.name: playerRoot.shaderLabel(modelData)
+            Keys.onSpacePressed: mpv.setShaderPreset(modelData)
+            Keys.onReturnPressed: mpv.setShaderPreset(modelData)
+            Keys.onEnterPressed: mpv.setShaderPreset(modelData)
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: (mpv.shaderPreset === modelData ? "● " : "○ ") + playerRoot.shaderLabel(modelData)
+                color: mpv.shaderPreset === modelData ? Tokens.themeAccent : Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize
+                elide: Text.ElideRight
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: mpv.setShaderPreset(modelData)
+            }
+        }
+    }
+    Component {
+        id: audioRow
+        Rectangle {
+            required property var modelData
+            width: settingsCol.width
+            height: 26
+            radius: 6
+            color: "transparent"
+            activeFocusOnTab: true
+            border.width: activeFocus ? 2 : 0
+            border.color: Tokens.themeAccent
+            Accessible.role: Accessible.Button
+            Accessible.name: playerRoot.trackLabel(modelData)
+            Keys.onSpacePressed: mpv.setAudioTrack(modelData.id)
+            Keys.onReturnPressed: mpv.setAudioTrack(modelData.id)
+            Keys.onEnterPressed: mpv.setAudioTrack(modelData.id)
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: (mpv.audioId === modelData.id ? "● " : "○ ") + playerRoot.trackLabel(modelData)
+                color: mpv.audioId === modelData.id ? Tokens.themeAccent : Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize
+                elide: Text.ElideRight
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: mpv.setAudioTrack(modelData.id)
+            }
+        }
+    }
+    Component {
+        id: subtitleRow
+        Rectangle {
+            required property var modelData
+            width: settingsCol.width
+            height: 26
+            radius: 6
+            color: "transparent"
+            activeFocusOnTab: true
+            border.width: activeFocus ? 2 : 0
+            border.color: Tokens.themeAccent
+            Accessible.role: Accessible.Button
+            Accessible.name: playerRoot.trackLabel(modelData)
+            Keys.onSpacePressed: mpv.setSubtitleTrack(modelData.id)
+            Keys.onReturnPressed: mpv.setSubtitleTrack(modelData.id)
+            Keys.onEnterPressed: mpv.setSubtitleTrack(modelData.id)
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: (mpv.subtitleId === modelData.id ? "● " : "○ ") + playerRoot.trackLabel(modelData)
+                color: mpv.subtitleId === modelData.id ? Tokens.themeAccent : Tokens.textPrimary
+                font.family: Tokens.fontSans
+                font.pixelSize: Tokens.metaSize
+                elide: Text.ElideRight
+            }
+            MouseArea {
+                anchors.fill: parent
+                onClicked: mpv.setSubtitleTrack(modelData.id)
             }
         }
     }

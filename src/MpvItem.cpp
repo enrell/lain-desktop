@@ -106,6 +106,7 @@ MpvItem::MpvItem(QQuickItem *parent) : QQuickFramebufferObject(parent) {
     mpv_observe_property(m_mpv, 0, "duration", MPV_FORMAT_DOUBLE);
     mpv_observe_property(m_mpv, 0, "pause", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE);
+    mpv_observe_property(m_mpv, 0, "speed", MPV_FORMAT_DOUBLE);
     mpv_observe_property(m_mpv, 0, "mute", MPV_FORMAT_FLAG);
     mpv_observe_property(m_mpv, 0, "aid", MPV_FORMAT_INT64);
     mpv_observe_property(m_mpv, 0, "sid", MPV_FORMAT_INT64);
@@ -210,6 +211,10 @@ void MpvItem::handleEvent(mpv_event *ev) {
             } else if (name == "volume") {
                 QMetaObject::invokeMethod(
                     this, [this, v] { m_volume = v; emit volumeChanged(); },
+                    Qt::QueuedConnection);
+            } else if (name == "speed") {
+                QMetaObject::invokeMethod(
+                    this, [this, v] { m_speed = v; emit speedChanged(); },
                     Qt::QueuedConnection);
             }
         } else if (prop->format == MPV_FORMAT_FLAG) {
@@ -337,6 +342,10 @@ void MpvItem::setVolume(double v) {
 
 void MpvItem::setMuted(bool m) {
     setProp("mute", m ? "yes" : "no");
+}
+
+void MpvItem::setSpeed(double v) {
+    setProp("speed", QString::number(qBound(0.1, v, 10.0), 'f', 2));
 }
 
 void MpvItem::setAudioTrack(int id) {
