@@ -27,12 +27,6 @@ Rectangle {
     signal moreInfo(var media)
     signal playUpNext(var media)
 
-    // Procedural wash when there is no artwork.
-    Rectangle {
-        anchors.fill: parent
-        color: Color.shade(hero.accent, 0.16)
-        Behavior on color { ColorAnimation { duration: 400 } }
-    }
 
     // Artwork anchored right, ~70% of width on wide screens.
     Item {
@@ -41,6 +35,12 @@ Rectangle {
         anchors.right: parent.right
         width: hero.width >= 900 ? hero.width * 0.7 : hero.width
         clip: true
+        // Procedural wash when there is no artwork; shaded like the art.
+        Rectangle {
+            anchors.fill: parent
+            color: Color.shade(hero.accent, 0.16)
+            Behavior on color { ColorAnimation { duration: 400 } }
+        }
         Image {
             anchors.fill: parent
             source: hero.artwork

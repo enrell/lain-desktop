@@ -93,6 +93,7 @@ Window {
                 home: root.homeData
                 onOpenMedia: m => root.openMedia(m)
                 onPlayMedia: m => root.playMedia(m)
+                onOpenSettings: (section, anchor) => root.openSettings(section, anchor)
                 onOpenLibrary: id => {
                     root.route = "library";
                     libraryView.selectedLibrary = id;
@@ -335,6 +336,10 @@ Window {
         function onAdminChanged() {
             if (server.adminStatus !== "")
                 toaster.show("success", server.adminStatus);
+        }
+        function onItemDeleted(id) {
+            if (root.route === "detail")
+                root.navigate("library");
         }
         function onErrorMessageChanged() {
             if (server.ready && server.errorMessage !== "")

@@ -31,6 +31,12 @@ runtime.
   re-renders from the new overlay without a restart.
 - **Theme-native.** Follows the Omarchy palette live (background,
   foreground, accent, urgent, muted, corner radius).
+- **Web parity.** The same information architecture as the Lain web
+  app: My list with linked AniList accounts, a Ctrl+K command palette,
+  profile avatars and mascots, password changes, a comic/manga reader,
+  and full server administration (folder picker, users and playback
+  limits, transcoding, integrations, plugins, backup) in a web-style
+  Settings rail.
 - **Headless test suite.** Qt Quick Test + QTest under `ctest` with
   `QT_QPA_PLATFORM=offscreen`; no window ever opens.
 
