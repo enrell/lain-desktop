@@ -160,8 +160,12 @@ void ServerClient::checkServer() {
 }
 
 void ServerClient::fetchMe() {
+    const quint64 gen = m_generation;
     requestJson("GET", QStringLiteral("/api/me"), {}, {}, true,
-                [this](bool ok, int status, const QJsonDocument &doc, const QString &err) {
+                [this, gen](bool ok, int status, const QJsonDocument &doc, const QString &err) {
+                    // A reply from before a logout must not sign the session back in.
+                    if (gen != m_generation)
+                        return;
                     if (!ok) {
                         if (status != 401) {
                             setState(QStringLiteral("offline"));
@@ -186,9 +190,12 @@ void ServerClient::login(const QString &username, const QString &password) {
     setBusy(true);
     clearError();
     const QJsonObject body{{"username", username}, {"password", password}};
+    const quint64 gen = m_generation;
     requestJson("POST", QStringLiteral("/api/auth/login"), body, {}, false,
-                [this, username](bool ok, int status, const QJsonDocument &doc, const QString &err) {
+                [this, username, gen](bool ok, int status, const QJsonDocument &doc, const QString &err) {
                     setBusy(false);
+                    if (gen != m_generation)
+                        return;
                     if (!ok) {
                         setError(status == 401 ? tr("Invalid username or password.")
                                                : errorFrom(doc, err));

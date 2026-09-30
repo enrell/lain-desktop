@@ -25,10 +25,11 @@ TestCase {
 
     function test_list_filters_entries() {
         ensureReady();
+        server.setPref("list/type", "");
+        server.setPref("list/status", "");
         const view = createTemporaryObject(listComponent, testCase, { visible: false });
         view.visible = true;
-        tryVerify(() => !server.listLoading);
-        verify(findChild(view, "listEmpty").visible);
+        tryVerify(() => !server.listLoading && findChild(view, "listEmpty").visible, 10000);
         server.submitLinkCode("anilist", "good-code");
         tryVerify(() => server.links.length === 1, 5000);
         view.reload();
@@ -68,6 +69,7 @@ TestCase {
         ensureReady();
         const media = server.catalog.find(m => m.id === "show-2");
         verify(media);
+        server.setPref("reader/" + media.series_id + "/direction", "");
         const reader = createTemporaryObject(readerComponent, testCase, { visible: false, media: media });
         reader.visible = true;
         tryVerify(() => reader.ready, 5000);

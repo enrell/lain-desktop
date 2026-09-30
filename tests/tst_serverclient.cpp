@@ -226,6 +226,17 @@ private slots:
         QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("enabled")));
     }
 
+    void logoutDropsInFlightLogin() {
+        m_client->setServerUrl(m_stub->baseUrl());
+        m_client->start();
+        QTRY_COMPARE(m_client->state(), QStringLiteral("login"));
+        m_client->login(QStringLiteral("admin"), QStringLiteral("password123"));
+        m_client->logout(); // before the reply lands
+        QTest::qWait(400);
+        QCOMPARE(m_client->state(), QStringLiteral("login"));
+        QVERIFY(m_client->username().isEmpty());
+    }
+
     // ---- web parity (DD-037)
 
     void profileUpdatesMeAndDisplayName() {

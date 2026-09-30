@@ -66,6 +66,7 @@ Window {
             root.readerMedia = m;
             root.returnRoute = root.route === "reader" ? root.returnRoute : root.route;
             root.route = "reader";
+            page.contentY = 0;
             return;
         }
         server.openMedia(m.id);
@@ -193,12 +194,12 @@ Window {
 
     // Ctrl+F / "/" jump straight to the search page (web parity).
     Shortcut {
-        enabled: server.ready
+        enabled: server.ready && root.route !== "reader"
         sequence: "Ctrl+F"
         onActivated: { root.route = "search"; searchView.focusInput(); }
     }
     Shortcut {
-        enabled: server.ready && !root.typing()
+        enabled: server.ready && !root.typing() && root.route !== "reader"
         sequence: "/"
         onActivated: { root.route = "search"; searchView.focusInput(); }
     }

@@ -40,6 +40,7 @@ TestCase {
         compare(localeManager.available.length, 3);
         const view = createTemporaryObject(settingsComponent, host);
         verify(view);
+        view.open("profile");
 
         const title = findChild(view, "settingsTitle");
         verify(title !== null);
