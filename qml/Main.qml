@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml
 import QtQuick.Layouts
 import Lain
 import "components"
@@ -42,6 +43,13 @@ Window {
         } else {
             root.route = "detail";
         }
+    }
+
+    function navigate(r) {
+        root.route = r;
+        if (r === "search")
+            searchView.focusInput();
+        page.contentY = 0;
     }
 
     function playMedia(m) {
@@ -117,11 +125,11 @@ Window {
                 }
             }
             SettingsView {
+                id: settingsView
                 visible: root.route === "settings"
                 Layout.fillWidth: true
-                Layout.leftMargin: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
-                Layout.rightMargin: Layout.leftMargin
-                Layout.topMargin: 16
+                Layout.preferredHeight: implicitHeight
+                scrollY: page.contentY
                 onLoggedOut: root.route = "home"
             }
         }
@@ -182,10 +190,38 @@ Window {
         sequence: "g"
         onActivated: { root.gArmed = true; gTimer.restart(); }
     }
-    Shortcut { enabled: root.gArmed; sequence: "h"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "home"; } }
-    Shortcut { enabled: root.gArmed; sequence: "l"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "library"; } }
-    Shortcut { enabled: root.gArmed; sequence: "s"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "search"; searchView.focusInput(); } }
-    Shortcut { enabled: root.gArmed; sequence: "e"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "settings"; } }
+    // Second key of a chord. Inside Settings the web's section letters win
+    // (g p profile, g l libraries, g s security…); elsewhere DD-036 applies.
+    function chord(key) {
+        root.gArmed = false;
+        gTimer.stop();
+        if (root.route === "settings" && settingsView.chord(key))
+            return;
+        if (key === "h") root.navigate("home");
+        else if (key === "l") root.navigate("library");
+        else if (key === "m") root.navigate("list");
+        else if (key === "s") root.navigate("search");
+        else if (key === "e") root.navigate("settings");
+    }
+    Instantiator {
+        model: ["h", "l", "m", "s", "e", "p", "y", "c", "d", "u", "t", "i", "x", "b"]
+        delegate: Shortcut {
+            required property string modelData
+            enabled: root.gArmed
+            sequence: modelData
+            onActivated: root.chord(modelData)
+        }
+    }
+    Shortcut {
+        enabled: root.route === "settings" && !root.typing()
+        sequence: "]"
+        onActivated: settingsView.cycle(1)
+    }
+    Shortcut {
+        enabled: root.route === "settings" && !root.typing()
+        sequence: "["
+        onActivated: settingsView.cycle(-1)
+    }
 
     // Esc tiers: shortcuts overlay → player popups → fullscreen → back.
     Shortcut {
@@ -222,6 +258,27 @@ Window {
     Shortcut { enabled: root.route === "player"; sequence: "P"; onActivated: playerView.stepEpisode(-1) }
 
     ShortcutsOverlay { id: shortcutsOverlay }
+
+    Toaster {
+        id: toaster
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        z: 3000
+        visible: server.ready
+    }
+    // Admin actions still report through adminStatus/errorMessage.
+    Connections {
+        target: server
+        function onAdminChanged() {
+            if (server.adminStatus !== "")
+                toaster.show("success", server.adminStatus);
+        }
+        function onErrorMessageChanged() {
+            if (server.ready && server.errorMessage !== "")
+                toaster.show("error", server.errorMessage);
+        }
+    }
 
     LoginView {
         anchors.fill: parent

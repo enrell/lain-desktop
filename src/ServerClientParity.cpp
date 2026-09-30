@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QMimeDatabase>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -570,4 +571,31 @@ int ServerClient::readerStartPage(const QString &id, int total) const {
     if (p.isEmpty() || p.value("completed").toBool() || pos < 1 || total <= 0)
         return 0;
     return qBound(0, int(pos) - 1, total - 1);
+}
+
+// ------------------------------------------------------------------ prefs
+
+QVariant ServerClient::pref(const QString &key, const QVariant &fallback) const {
+    if (key.isEmpty())
+        return fallback;
+    return QSettings().value(QStringLiteral("prefs/") + key, fallback);
+}
+
+void ServerClient::setPref(const QString &key, const QVariant &value) {
+    if (key.isEmpty())
+        return;
+    QSettings().setValue(QStringLiteral("prefs/") + key, value);
+    emit prefsChanged();
+}
+
+// Web effects-policy order, reduced to what the desktop can know before
+// playback starts: a per-library-type override wins over the default.
+QString ServerClient::effectFor(const QString &libraryId) const {
+    const QString type = m_libraryTypes.value(libraryId).toLower();
+    if (!type.isEmpty()) {
+        const QString typed = pref(QStringLiteral("effects/type/") + type).toString();
+        if (!typed.isEmpty() && typed != QLatin1String("default"))
+            return typed;
+    }
+    return pref(QStringLiteral("effects/default"), QStringLiteral("off")).toString();
 }

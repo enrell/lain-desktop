@@ -38,7 +38,7 @@ ColumnLayout {
             anchors.verticalCenter: parent.verticalCenter
             columns: root.stack ? 1 : 2
             columnSpacing: 32
-            rowSpacing: 12
+            rowSpacing: 0
 
             ColumnLayout {
                 Layout.preferredWidth: root.stack ? -1 : 272
@@ -88,6 +88,7 @@ ColumnLayout {
             RowLayout {
                 id: controlRow
                 Layout.fillWidth: root.stack
+                Layout.topMargin: root.stack ? 12 : 0
                 Layout.alignment: root.stack ? Qt.AlignLeft : (Qt.AlignRight | Qt.AlignVCenter)
                 spacing: 8
             }
@@ -95,7 +96,8 @@ ColumnLayout {
                 id: belowCol
                 Layout.columnSpan: root.stack ? 1 : 2
                 Layout.fillWidth: true
-                visible: children.length > 0
+                // Always present; empty (or all-hidden) content has no height.
+                Layout.topMargin: implicitHeight > 0 ? 12 : 0
                 spacing: 6
             }
         }

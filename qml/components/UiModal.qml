@@ -50,7 +50,8 @@ Item {
         width: Math.min(root.cardWidth, root.width * 0.92)
         height: Math.min(cardCol.implicitHeight + 40, root.height * 0.9)
         radius: Tokens.radiusLg
-        color: Tokens.bgElevated
+        // A step below the field fill, so inputs stay visible on the card.
+        color: Tokens.bgSecondary
         border.color: Tokens.borderSubtle
         clip: true
         Keys.onEscapePressed: root.close()

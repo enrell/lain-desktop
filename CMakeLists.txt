@@ -57,6 +57,18 @@ qt_add_qml_module(lain_core
         qml/components/ConfirmDialog.qml
         qml/components/ShortcutsOverlay.qml
         qml/components/Hero.qml
+        qml/views/settings/SettingsPage.qml
+        qml/views/settings/ProfileSection.qml
+        qml/views/settings/PlaybackSection.qml
+        qml/views/settings/ConnectionsSection.qml
+        qml/views/settings/SecuritySection.qml
+        qml/views/settings/DesktopSection.qml
+        qml/views/settings/LibrariesSection.qml
+        qml/views/settings/UsersSection.qml
+        qml/views/settings/TranscodingSection.qml
+        qml/views/settings/IntegrationsSection.qml
+        qml/views/settings/PluginsSection.qml
+        qml/views/settings/BackupSection.qml
         qml/views/HomeView.qml
         qml/views/LibraryView.qml
         qml/views/DetailView.qml

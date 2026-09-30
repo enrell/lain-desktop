@@ -231,6 +231,13 @@ public:
     Q_INVOKABLE void saveReaderProgress(const QString &id, int page, int total);
     Q_INVOKABLE int readerStartPage(const QString &id, int total) const;
 
+    // Per-client preferences the web keeps in localStorage (effects,
+    // last settings section, list filters, reader direction).
+    Q_INVOKABLE QVariant pref(const QString &key, const QVariant &fallback = {}) const;
+    Q_INVOKABLE void setPref(const QString &key, const QVariant &value);
+    // Default Anime4K preset for a library type (web effects policy).
+    Q_INVOKABLE QString effectFor(const QString &libraryId) const;
+
 signals:
     void serverUrlChanged();
     void stateChanged();
@@ -266,6 +273,7 @@ signals:
     // toast and closes the matching dialog on ok.
     void actionFinished(const QString &action, bool ok, const QString &message);
     void itemDeleted(const QString &id);
+    void prefsChanged();
 
     void playbackReady(const QString &url, double positionSec, double durationSec);
     void playbackFailed(const QString &reason);

@@ -193,6 +193,10 @@ Item {
             playerRoot.hasStream = true;
             playerRoot.resumedFrom = 0;
             mpv.play(url);
+            // Default video effect from Settings › Playback (web effects policy).
+            var effect = server.effectFor(playerRoot.media ? playerRoot.media.library_id : "");
+            if (effect && effect !== mpv.shaderPreset)
+                mpv.setShaderPreset(effect);
             // DD-031: auto-resume is a user default, not forced behavior.
             if (server.autoResume && positionSec > 5 && (durationSec <= 0 || positionSec < durationSec - 5)) {
                 playerRoot.pendingResume = positionSec;
