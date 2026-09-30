@@ -1627,17 +1627,16 @@ QString ServerClient::fileExtension(const QString &path) {
 }
 
 QString ServerClient::accentFor(const QString &seed) {
-    static const QStringList palette = {
-        QStringLiteral("#E8641F"), QStringLiteral("#5B8DD9"), QStringLiteral("#4FA3A3"),
-        QStringLiteral("#B33A3A"), QStringLiteral("#D94F70"), QStringLiteral("#4F7FA3"),
-        QStringLiteral("#8A7A5B"), QStringLiteral("#7FA88B"), QStringLiteral("#C9A227"),
-        QStringLiteral("#7A3B4F"), QStringLiteral("#3FA34D"), QStringLiteral("#6B5B95"),
+    static constexpr const char *palette[] = {
+        "#E8641F", "#5B8DD9", "#4FA3A3", "#B33A3A", "#D94F70", "#4F7FA3",
+        "#8A7A5B", "#7FA88B", "#C9A227", "#7A3B4F", "#3FA34D", "#6B5B95",
     };
+    constexpr int count = int(sizeof(palette) / sizeof(palette[0]));
     const QByteArray hash = QCryptographicHash::hash(seed.toUtf8(), QCryptographicHash::Sha1);
     int sum = 0;
     for (const char c : hash)
         sum = (sum * 31 + static_cast<unsigned char>(c)) & 0x7fffffff;
-    return palette.at(sum % palette.size());
+    return QString::fromLatin1(palette[sum % count]);
 }
 
 QString ServerClient::joinGenres(const QStringList &genres) {
