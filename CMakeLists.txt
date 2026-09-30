@@ -31,6 +31,20 @@ qt_add_qml_module(lain_core
         qml/theme/Color.js
         qml/theme/Format.js
         qml/components/TopBar.qml
+        qml/components/Glyph.qml
+        qml/components/Mascot.qml
+        qml/components/Avatar.qml
+        qml/components/UiButton.qml
+        qml/components/UiSpinner.qml
+        qml/components/UiBadge.qml
+        qml/components/UiSwitch.qml
+        qml/components/UiField.qml
+        qml/components/UiTextArea.qml
+        qml/components/UiSelect.qml
+        qml/components/UiModal.qml
+        qml/components/Toaster.qml
+        qml/components/SettingsGroup.qml
+        qml/components/SettingRow.qml
         qml/components/LibrarySelect.qml
         qml/components/MediaRow.qml
         qml/components/PosterCard.qml
