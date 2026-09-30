@@ -230,6 +230,7 @@ public:
     Q_INVOKABLE QString readerPageUrl(const QString &id, int index) const;
     Q_INVOKABLE void saveReaderProgress(const QString &id, int page, int total);
     Q_INVOKABLE int readerStartPage(const QString &id, int total) const;
+    Q_INVOKABLE QString followingEpisodeIdFor(const QString &id) const { return followingEpisodeId(id); }
 
     // Per-client preferences the web keeps in localStorage (effects,
     // last settings section, list filters, reader direction).

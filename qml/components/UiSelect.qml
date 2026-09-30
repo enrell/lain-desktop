@@ -102,6 +102,8 @@ Rectangle {
     // Full-window layer: a click outside the list closes it.
     Item {
         id: popup
+        readonly property bool opened: visible
+        function close() { root.close(); }
         visible: false
         z: 1000
         width: parent ? parent.width : 0

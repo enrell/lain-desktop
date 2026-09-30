@@ -45,6 +45,8 @@ qt_add_qml_module(lain_core
         qml/components/Toaster.qml
         qml/components/SettingsGroup.qml
         qml/components/SettingRow.qml
+        qml/components/ListEntryCard.qml
+        qml/components/CommandPalette.qml
         qml/components/LibrarySelect.qml
         qml/components/MediaRow.qml
         qml/components/PosterCard.qml
@@ -70,6 +72,8 @@ qt_add_qml_module(lain_core
         qml/views/settings/PluginsSection.qml
         qml/views/settings/BackupSection.qml
         qml/views/HomeView.qml
+        qml/views/MyListView.qml
+        qml/views/ReaderView.qml
         qml/views/LibraryView.qml
         qml/views/DetailView.qml
         qml/views/SeriesView.qml

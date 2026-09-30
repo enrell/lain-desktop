@@ -18,6 +18,7 @@ Window {
     property var currentSeries: null
     property string route: "home"
     property string returnRoute: "home"
+    property var readerMedia: null
 
     // Find the series object a normalized card belongs to (if any).
     function seriesFor(media) {
@@ -52,7 +53,21 @@ Window {
         page.contentY = 0;
     }
 
+    function openSettings(section, anchor) {
+        root.navigate("settings");
+        if (section)
+            settingsView.open(section, anchor || "");
+    }
+
     function playMedia(m) {
+        // Comics and manga open in the reader, not the video player (D-085).
+        if (server.isReadable(m.kind)) {
+            server.openMedia(m.id);
+            root.readerMedia = m;
+            root.returnRoute = root.route === "reader" ? root.returnRoute : root.route;
+            root.route = "reader";
+            return;
+        }
         server.openMedia(m.id);
         server.requestPlayback(m.id);
         root.returnRoute = root.route === "player" ? root.returnRoute : root.route;
@@ -90,6 +105,12 @@ Window {
                 onOpenMedia: m => root.openMedia(m)
                 onOpenSeries: s => { root.returnRoute = "library"; root.currentSeries = s; root.route = "series"; }
             }
+            MyListView {
+                id: myListView
+                Layout.fillWidth: true
+                visible: root.route === "list"
+                onOpenConnections: root.openSettings("connections", "anilist")
+            }
             SearchView {
                 id: searchView
                 Layout.fillWidth: true
@@ -124,6 +145,18 @@ Window {
                     server.refresh();
                 }
             }
+            ReaderView {
+                id: readerView
+                visible: root.route === "reader"
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.height
+                media: root.readerMedia
+                onBack: {
+                    root.route = root.returnRoute === "reader" ? "home" : root.returnRoute;
+                    server.refresh();
+                }
+                onOpenMedia: m => { root.readerMedia = m; server.openMedia(m.id); }
+            }
             SettingsView {
                 id: settingsView
                 visible: root.route === "settings"
@@ -141,16 +174,13 @@ Window {
         anchors.right: parent.right
         anchors.top: parent.top
         z: 10
-        visible: server.ready && root.visibility !== Window.FullScreen && root.route !== "player"
+        visible: server.ready && root.visibility !== Window.FullScreen && root.route !== "player" && root.route !== "reader"
         current: root.route
-        onNavigate: r => {
-            root.route = r;
-            if (r === "search")
-                searchView.focusInput();
-            page.contentY = 0;
-        }
+        onNavigate: r => root.navigate(r)
+        onOpenSettings: s => root.openSettings(s, "")
         onLogout: server.logout()
         onHelpRequested: shortcutsOverlay.open()
+        onPaletteRequested: palette.open()
     }
 
     // Text fields eat letters themselves; shortcut matches can shadow
@@ -186,7 +216,7 @@ Window {
     property bool gArmed: false
     Timer { id: gTimer; interval: 700; onTriggered: root.gArmed = false }
     Shortcut {
-        enabled: server.ready && !root.typing() && root.route !== "player"
+        enabled: server.ready && !root.typing() && root.route !== "player" && root.route !== "reader" && !palette.visible
         sequence: "g"
         onActivated: { root.gArmed = true; gTimer.restart(); }
     }
@@ -223,11 +253,31 @@ Window {
         onActivated: settingsView.cycle(-1)
     }
 
+    // Modals, selects and menus lift themselves to the window content item
+    // and expose `opened` + close(); Esc closes the topmost one.
+    function closeTopOverlay() {
+        var kids = root.contentItem.children;
+        for (var i = kids.length - 1; i >= 0; --i) {
+            var k = kids[i];
+            if (k.opened === true && typeof k.close === "function") {
+                k.close();
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Esc tiers: shortcuts overlay → player popups → fullscreen → back.
     Shortcut {
         sequence: "Esc"
         onActivated: {
-            if (shortcutsOverlay.visible)
+            if (palette.visible)
+                palette.close();
+            else if (root.closeTopOverlay())
+                return;
+            else if (root.route === "reader")
+                readerView.close();
+            else if (shortcutsOverlay.visible)
                 shortcutsOverlay.close();
             else if (root.route === "player" && playerView.closeChrome())
                 return;
@@ -258,6 +308,18 @@ Window {
     Shortcut { enabled: root.route === "player"; sequence: "P"; onActivated: playerView.stepEpisode(-1) }
 
     ShortcutsOverlay { id: shortcutsOverlay }
+
+    CommandPalette {
+        id: palette
+        onNavigate: r => root.navigate(r)
+        onOpenSettings: (section, anchor) => root.openSettings(section, anchor)
+        onOpenMedia: m => { root.openMedia(m); page.contentY = 0; }
+    }
+    Shortcut {
+        enabled: server.ready && root.route !== "player"
+        sequence: "Ctrl+K"
+        onActivated: palette.visible ? palette.close() : palette.open()
+    }
 
     Toaster {
         id: toaster
