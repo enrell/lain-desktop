@@ -66,6 +66,28 @@ class ServerClient : public QObject {
     Q_PROPERTY(QString playbackError READ playbackError NOTIFY playbackErrorChanged)
     Q_PROPERTY(int pendingProgress READ pendingProgress NOTIFY progressQueueChanged)
 
+    // Web parity (DD-037): account profile, linked lists, admin settings.
+    Q_PROPERTY(QVariantMap me READ me NOTIFY userChanged)
+    Q_PROPERTY(QString displayName READ displayName NOTIFY userChanged)
+    Q_PROPERTY(QString avatarUrl READ avatarUrl NOTIFY userChanged)
+    Q_PROPERTY(bool isAdmin READ isAdmin NOTIFY userChanged)
+    Q_PROPERTY(QVariantList links READ links NOTIFY linksChanged)
+    Q_PROPERTY(QString linkPinUrl READ linkPinUrl NOTIFY linksChanged)
+    Q_PROPERTY(bool linksLoaded READ linksLoaded NOTIFY linksChanged)
+    Q_PROPERTY(QVariantList listEntries READ listEntries NOTIFY listChanged)
+    Q_PROPERTY(bool listLoading READ listLoading NOTIFY listChanged)
+    Q_PROPERTY(QString listError READ listError NOTIFY listChanged)
+    Q_PROPERTY(QVariantMap integrations READ integrations NOTIFY integrationsChanged)
+    Q_PROPERTY(QVariantMap transcodeSettings READ transcodeSettings NOTIFY transcodeChanged)
+    Q_PROPERTY(QVariantMap transcodeCapabilities READ transcodeCapabilities NOTIFY transcodeChanged)
+    Q_PROPERTY(QVariantList transcodeSessions READ transcodeSessions NOTIFY transcodeSessionsChanged)
+    Q_PROPERTY(QVariantMap browseResult READ browseResult NOTIFY browseChanged)
+    Q_PROPERTY(bool browsing READ browsing NOTIFY browseChanged)
+    Q_PROPERTY(QString browseError READ browseError NOTIFY browseChanged)
+    Q_PROPERTY(QVariantMap readerView READ readerView NOTIFY readerChanged)
+    Q_PROPERTY(bool readerLoading READ readerLoading NOTIFY readerChanged)
+    Q_PROPERTY(QString readerError READ readerError NOTIFY readerChanged)
+
 public:
     explicit ServerClient(QObject *parent = nullptr);
 
@@ -112,6 +134,27 @@ public:
     QString playbackError() const { return m_playbackError; }
     int pendingProgress() const { return m_queued.size(); }
 
+    QVariantMap me() const { return m_me; }
+    QString displayName() const;
+    QString avatarUrl() const { return avatarUrlFor(m_me); }
+    bool isAdmin() const { return m_role == QLatin1String("admin"); }
+    QVariantList links() const { return m_links; }
+    QString linkPinUrl() const { return m_linkPinUrl; }
+    bool linksLoaded() const { return m_linksLoaded; }
+    QVariantList listEntries() const { return m_listEntries; }
+    bool listLoading() const { return m_listLoading; }
+    QString listError() const { return m_listError; }
+    QVariantMap integrations() const { return m_integrations; }
+    QVariantMap transcodeSettings() const { return m_transcodeSettings; }
+    QVariantMap transcodeCapabilities() const { return m_transcodeCapabilities; }
+    QVariantList transcodeSessions() const { return m_transcodeSessions; }
+    QVariantMap browseResult() const { return m_browse; }
+    bool browsing() const { return m_browsing; }
+    QString browseError() const { return m_browseError; }
+    QVariantMap readerView() const { return m_readerView; }
+    bool readerLoading() const { return m_readerLoading; }
+    QString readerError() const { return m_readerError; }
+
     Q_INVOKABLE void start();
     Q_INVOKABLE void login(const QString &username, const QString &password);
     Q_INVOKABLE void setup(const QString &username, const QString &password);
@@ -150,6 +193,44 @@ public:
     Q_INVOKABLE void setSeriesAutoplay(const QString &seriesId, const QString &mode);
     Q_INVOKABLE QString nextEpisodeId(const QString &id) const;
 
+    // Account (DD-037). Results arrive through actionFinished(action, ...).
+    Q_INVOKABLE void updateProfile(const QVariantMap &patch);  // display_name, bio, mascot
+    Q_INVOKABLE void uploadAvatar(const QUrl &file);
+    Q_INVOKABLE void removeAvatar();
+    Q_INVOKABLE void changePassword(const QString &oldPassword, const QString &newPassword);
+    Q_INVOKABLE void setPreferredLanguage(const QString &code);
+    Q_INVOKABLE QString avatarUrlFor(const QVariantMap &user) const;
+    Q_INVOKABLE QString displayNameFor(const QVariantMap &user) const;
+
+    // Linked list accounts and the unified list (D-078/D-079 on the server).
+    Q_INVOKABLE void loadLinks();
+    Q_INVOKABLE void connectLink(const QString &platform);
+    Q_INVOKABLE void submitLinkCode(const QString &platform, const QString &code);
+    Q_INVOKABLE void syncLink(const QString &platform);
+    Q_INVOKABLE void setLinkScrobble(const QString &platform, bool scrobble);
+    Q_INVOKABLE void unlink(const QString &platform);
+    Q_INVOKABLE void loadList(const QString &type, const QString &status);
+
+    // Admin: integrations, transcoding, folder picker, files, user limits.
+    Q_INVOKABLE void loadIntegrations();
+    Q_INVOKABLE void saveIntegrations(const QString &clientId, const QString &clientSecret);
+    Q_INVOKABLE void loadTranscodeSettings();
+    Q_INVOKABLE void saveTranscodeSettings(const QVariantMap &settings);
+    Q_INVOKABLE void loadTranscodeSessions();
+    Q_INVOKABLE void cancelTranscodeSession(const QString &session);
+    Q_INVOKABLE void browseFolders(const QString &path);
+    Q_INVOKABLE void deleteItemFile(const QString &id);
+    Q_INVOKABLE void resetProgress(const QString &id);
+    Q_INVOKABLE void setUserPlayback(const QString &id, const QVariantMap &policy);
+    Q_INVOKABLE QVariantMap progressFor(const QString &id) const;
+
+    // Comic/manga reader (D-085 on the server).
+    Q_INVOKABLE bool isReadable(const QString &kind) const;
+    Q_INVOKABLE void loadReader(const QString &id);
+    Q_INVOKABLE QString readerPageUrl(const QString &id, int index) const;
+    Q_INVOKABLE void saveReaderProgress(const QString &id, int page, int total);
+    Q_INVOKABLE int readerStartPage(const QString &id, int total) const;
+
 signals:
     void serverUrlChanged();
     void stateChanged();
@@ -174,6 +255,18 @@ signals:
     void playbackErrorChanged();
     void progressQueueChanged();
 
+    void linksChanged();
+    void listChanged();
+    void integrationsChanged();
+    void transcodeChanged();
+    void transcodeSessionsChanged();
+    void browseChanged();
+    void readerChanged();
+    // One completion signal for the web-parity actions: the UI shows a
+    // toast and closes the matching dialog on ok.
+    void actionFinished(const QString &action, bool ok, const QString &message);
+    void itemDeleted(const QString &id);
+
     void playbackReady(const QString &url, double positionSec, double durationSec);
     void playbackFailed(const QString &reason);
 
@@ -183,6 +276,8 @@ private:
     // HTTP
     void requestJson(const QString &method, const QString &path, const QJsonObject &body,
                      const QUrlQuery &query, bool auth, JsonCallback cb);
+    void requestBytes(const QString &method, const QString &path, const QByteArray &payload,
+                      const QByteArray &contentType, const QUrlQuery &query, bool auth, JsonCallback cb);
     QUrl apiUrl(const QString &path, const QUrlQuery &query = {}) const;
     QString streamUrlFor(const QString &id) const;
 
@@ -293,6 +388,29 @@ private:
     void dequeueProgress(const QString &id);
     void persistQueue();
     void loadQueue();
+
+    // Web parity state (DD-037).
+    QVariantMap m_me;
+    QVariantList m_links;
+    QString m_linkPinUrl;
+    bool m_linksLoaded = false;
+    QVariantList m_listEntries;
+    bool m_listLoading = false;
+    QString m_listError;
+    QVariantMap m_integrations;
+    QVariantMap m_transcodeSettings;
+    QVariantMap m_transcodeCapabilities;
+    QVariantList m_transcodeSessions;
+    QVariantMap m_browse;
+    bool m_browsing = false;
+    QString m_browseError;
+    QVariantMap m_readerView;
+    bool m_readerLoading = false;
+    QString m_readerError;
+    void setMe(const QJsonObject &user);
+    QString followingEpisodeId(const QString &id) const;
+    QJsonArray m_homeRecent, m_homeCont;
+    void finish(const QString &action, bool ok, const QString &message);
 
     quint64 m_generation = 0;  // invalidates replies from previous sessions
 };

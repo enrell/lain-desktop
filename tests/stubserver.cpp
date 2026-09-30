@@ -301,11 +301,218 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
         return json(401, QJsonObject{{"error", "unauthorized"}}, "Unauthorized");
     }
 
+    const auto me = [this] {
+        QJsonObject avatar;
+        if (!avatarKind.isEmpty())
+            avatar.insert("kind", avatarKind);
+        if (!mascot.isEmpty())
+            avatar.insert("mascot", mascot);
+        if (avatarVersion > 0)
+            avatar.insert("version", avatarVersion);
+        QJsonObject profile{{"avatar", avatar}};
+        if (!displayName.isEmpty())
+            profile.insert("display_name", displayName);
+        if (!bio.isEmpty())
+            profile.insert("bio", bio);
+        QJsonObject user{{"id", "user-admin"}, {"username", "admin"}, {"role", "admin"},
+                         {"disabled", false}, {"pwd_ver", 1}, {"created_at", 1},
+                         {"profile", profile}};
+        if (!preferredLanguage.isEmpty())
+            user.insert("preferred_language", preferredLanguage);
+        return user;
+    };
+
     if (method == QLatin1String("GET") && path == QLatin1String("/api/me")) {
         status = 200;
-        return json(200, QJsonObject{{"id", "user-admin"}, {"username", "admin"},
-                                     {"role", "admin"}, {"disabled", false},
-                                     {"pwd_ver", 1}, {"created_at", 1}});
+        return json(200, me());
+    }
+
+    if (method == QLatin1String("PATCH") && path == QLatin1String("/api/me/profile")) {
+        const QJsonObject in = QJsonDocument::fromJson(body).object();
+        if (in.contains("display_name"))
+            displayName = in.value("display_name").toString();
+        if (in.contains("bio"))
+            bio = in.value("bio").toString();
+        if (in.contains("mascot")) {
+            mascot = in.value("mascot").toString();
+            avatarKind = mascot.isEmpty() ? QString() : QStringLiteral("mascot");
+        }
+        status = 200;
+        return json(200, me());
+    }
+
+    if (path == QLatin1String("/api/me/avatar")) {
+        if (method == QLatin1String("PUT")) {
+            if (body.isEmpty()) {
+                status = 400;
+                return json(400, QJsonObject{{"error", "empty image"}}, "Bad Request");
+            }
+            avatarKind = QStringLiteral("upload");
+            mascot.clear();
+            avatarVersion++;
+        } else if (method == QLatin1String("DELETE")) {
+            avatarKind.clear();
+            mascot.clear();
+        }
+        status = 200;
+        return json(200, me());
+    }
+
+    if (method == QLatin1String("PATCH") && path == QLatin1String("/api/me/password")) {
+        const QJsonObject in = QJsonDocument::fromJson(body).object();
+        if (in.value("old").toString() != password) {
+            status = 403;
+            return json(403, QJsonObject{{"error", "wrong password"}}, "Forbidden");
+        }
+        password = in.value("new").toString();
+        status = 200;
+        return json(200, QJsonObject{{"status", "ok"}});
+    }
+
+    if (method == QLatin1String("PATCH") && path == QLatin1String("/api/me/preferences")) {
+        preferredLanguage = QJsonDocument::fromJson(body).object().value("preferred_language").toString();
+        status = 200;
+        return json(200, me());
+    }
+
+    const auto linkView = [this] {
+        return QJsonObject{{"platform", "anilist"}, {"remote_user_id", "42"},
+                           {"remote_username", "lainfan"}, {"linked_at", 1700000000},
+                           {"last_sync_at", 1700000500}, {"entry_count", 2},
+                           {"scrobble", anilistScrobble}};
+    };
+
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/me/links")) {
+        status = 200;
+        return json(200, QJsonObject{{"links", anilistLinked ? QJsonArray{linkView()} : QJsonArray{}}});
+    }
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/me/links/anilist/pin")) {
+        status = 200;
+        return json(200, QJsonObject{{"url", "https://anilist.co/api/v2/oauth/pin"}});
+    }
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/me/links/anilist/authorize")) {
+        status = 409;
+        return json(409, QJsonObject{{"error", "not configured"}, {"code", "not-configured"}}, "Conflict");
+    }
+    if (method == QLatin1String("POST") && path == QLatin1String("/api/me/links/anilist/code")) {
+        if (QJsonDocument::fromJson(body).object().value("code").toString() != QLatin1String("good-code")) {
+            status = 400;
+            return json(400, QJsonObject{{"error", "invalid grant"}, {"code", "invalid-grant"}}, "Bad Request");
+        }
+        anilistLinked = true;
+        status = 200;
+        return json(200, QJsonObject{{"link", linkView()}});
+    }
+    if (method == QLatin1String("POST") && path == QLatin1String("/api/me/links/anilist/sync")) {
+        status = 200;
+        return json(200, QJsonObject{{"status", "ok"},
+                                     {"stats", QJsonObject{{"upserted", 2}, {"removed", 0}}}});
+    }
+    if (path == QLatin1String("/api/me/links/anilist")) {
+        if (method == QLatin1String("PATCH")) {
+            anilistScrobble = QJsonDocument::fromJson(body).object().value("scrobble").toBool();
+            status = 200;
+            return json(200, linkView());
+        }
+        if (method == QLatin1String("DELETE")) {
+            anilistLinked = false;
+            status = 200;
+            return json(200, QJsonObject{{"status", "ok"}, {"removed", 2}});
+        }
+    }
+
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/list")) {
+        QJsonArray entries;
+        if (anilistLinked) {
+            const QJsonArray all{
+                QJsonObject{{"id", "le-1"}, {"user_id", "user-admin"}, {"platform", "anilist"},
+                            {"remote_id", "154587"}, {"media_type", "anime"}, {"title", "Frieren"},
+                            {"status", "current"}, {"progress", 12}, {"progress_total", 28},
+                            {"score", 9}, {"updated_at", 1700000500}},
+                QJsonObject{{"id", "le-2"}, {"user_id", "user-admin"}, {"platform", "anilist"},
+                            {"remote_id", "30002"}, {"media_type", "manga"}, {"title", "Berserk"},
+                            {"status", "planning"}, {"progress", 0}, {"updated_at", 1700000400}},
+            };
+            const QString type = query.queryItemValue("type");
+            const QString st = query.queryItemValue("status");
+            for (const QJsonValue &v : all) {
+                const QJsonObject e = v.toObject();
+                if (!type.isEmpty() && e.value("media_type").toString() != type)
+                    continue;
+                if (!st.isEmpty() && e.value("status").toString() != st)
+                    continue;
+                entries.append(e);
+            }
+        }
+        status = 200;
+        return json(200, QJsonObject{{"entries", entries}});
+    }
+
+    const auto integrationsBody = [this] {
+        return QJsonObject{{"platforms", QJsonObject{{"anilist", QJsonObject{
+            {"client_id", integrationClientId}, {"secret_set", integrationSecretSet},
+            {"callback_url", "http://127.0.0.1:9360/api/links/anilist/callback"}}}}}};
+    };
+    if (path == QLatin1String("/api/admin/settings/integrations")) {
+        if (method == QLatin1String("PUT")) {
+            const QJsonObject in = QJsonDocument::fromJson(body).object();
+            integrationClientId = in.value("anilist_client_id").toString();
+            if (!in.value("anilist_client_secret").toString().isEmpty())
+                integrationSecretSet = true;
+        }
+        status = 200;
+        return json(200, integrationsBody());
+    }
+
+    const auto transcodeBody = [this] {
+        return QJsonObject{
+            {"settings", QJsonObject{{"default_delivery", "hls"}, {"hls_segment_seconds", 6},
+                                     {"hls_segment_container", "fmp4"}, {"throttle", true},
+                                     {"crf", transcodeCrf}, {"encoder_preset", "veryfast"},
+                                     {"hardware_acceleration", "none"}, {"tone_mapping", false},
+                                     {"subtitle_mode", "auto"}, {"audio_bitrate_kbps", 192},
+                                     {"max_concurrent", 2}, {"qualities", QJsonArray{}}}},
+            {"capabilities", QJsonObject{{"ffmpeg", "7.1"}, {"encoders", QJsonArray{"libx264"}},
+                                         {"tone_mapping", false}, {"tone_mapping_bt2390", false},
+                                         {"hardware", QJsonObject{{"vaapi", true}}}}}};
+    };
+    if (path == QLatin1String("/api/admin/settings/transcode")) {
+        if (method == QLatin1String("PUT"))
+            transcodeCrf = QJsonDocument::fromJson(body).object().value("crf").toInt();
+        status = 200;
+        return json(200, transcodeBody());
+    }
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/admin/transcodes")) {
+        status = 200;
+        return json(200, QJsonObject{{"sessions", QJsonArray{QJsonObject{
+            {"session", "tx-1"}, {"state", "running"}, {"profile", "720p"}, {"user_id", "user-admin"},
+            {"progress", 0.4}, {"method", "transcode"}}}}});
+    }
+    if (method == QLatin1String("DELETE") && path.startsWith(QLatin1String("/api/admin/transcodes/"))) {
+        status = 200;
+        return json(200, QJsonObject{{"session", "tx-1"}, {"state", "failed"}, {"profile", "720p"}});
+    }
+
+    if (method == QLatin1String("GET") && path == QLatin1String("/api/browse")) {
+        const QString at = query.queryItemValue("path").isEmpty() ? QStringLiteral("/media")
+                                                                    : query.queryItemValue("path");
+        QJsonArray dirs;
+        if (at == QLatin1String("/media")) {
+            dirs.append(QJsonObject{{"name", "Anime"}, {"path", "/media/Anime"}});
+            dirs.append(QJsonObject{{"name", "Movies"}, {"path", "/media/Movies"}});
+        }
+        status = 200;
+        return json(200, QJsonObject{{"path", at}, {"parent", at == QLatin1String("/media") ? "/" : "/media"},
+                                     {"detected", true}, {"dirs", dirs}});
+    }
+
+    if (path.startsWith(QLatin1String("/api/items/")) && path.endsWith(QLatin1String("/pages"))) {
+        status = 200;
+        return json(200, QJsonObject{{"kind", "manga"}, {"format", "cbz"}, {"direction", "rtl"},
+                                     {"pages", QJsonArray{
+                                         QJsonObject{{"index", 0}, {"mime", "image/png"}, {"size", 10}, {"width", 800}, {"height", 1200}},
+                                         QJsonObject{{"index", 1}, {"mime", "image/png"}, {"size", 10}, {"width", 800}, {"height", 1200}},
+                                         QJsonObject{{"index", 2}, {"mime", "image/png"}, {"size", 10}, {"width", 800}, {"height", 1200}}}}});
     }
 
     if (method == QLatin1String("GET") && path == QLatin1String("/api/libraries")) {
@@ -512,6 +719,20 @@ QByteArray StubServer::route(const QString &method, const QString &path, const Q
                                      {"total", hits.size()},
                                      {"limit", limit},
                                      {"offset", 0}});
+    }
+
+    if (method == QLatin1String("DELETE") && path.startsWith(QLatin1String("/api/items/"))
+        && path.count(QLatin1Char('/')) == 3) {
+        const QString id = path.mid(int(qstrlen("/api/items/")));
+        QJsonObject item = findItem(id);
+        if (item.isEmpty()) {
+            status = 404;
+            return json(404, QJsonObject{{"error", "unknown item"}}, "Not Found");
+        }
+        deletedItems << id;
+        item.insert("missing", true);
+        status = 200;
+        return json(200, item);
     }
 
     if (path.startsWith(QLatin1String("/api/items/")) && path.endsWith(QLatin1String("/playback"))) {

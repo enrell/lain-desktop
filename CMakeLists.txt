@@ -66,7 +66,7 @@ qt_add_qml_module(lain_core
 )
 target_sources(lain_core PRIVATE
     src/MpvItem.h src/MpvItem.cpp
-    src/ServerClient.h src/ServerClient.cpp
+    src/ServerClient.h src/ServerClient.cpp src/ServerClientParity.cpp
     src/OmarchyTheme.h src/OmarchyTheme.cpp
     src/LocaleManager.h src/LocaleManager.cpp
     src/Provisioning.h src/Provisioning.cpp

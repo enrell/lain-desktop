@@ -226,6 +226,176 @@ private slots:
         QTRY_VERIFY(m_client->adminStatus().contains(QStringLiteral("enabled")));
     }
 
+    // ---- web parity (DD-037)
+
+    void profileUpdatesMeAndDisplayName() {
+        QVERIFY(startReadyClient());
+        QCOMPARE(m_client->displayName(), QStringLiteral("admin"));
+        QSignalSpy done(m_client, &ServerClient::actionFinished);
+        m_client->updateProfile({{"display_name", QStringLiteral("Lain Iwakura")}, {"bio", QStringLiteral("Present day.")}});
+        QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(done.at(0).at(0).toString(), QStringLiteral("profile"));
+        QVERIFY(done.at(0).at(1).toBool());
+        QCOMPARE(m_client->displayName(), QStringLiteral("Lain Iwakura"));
+        m_client->updateProfile({{"display_name", QString(41, QLatin1Char('x'))}});
+        QTRY_COMPARE(done.size(), 2);
+        QVERIFY(!done.at(1).at(1).toBool());
+    }
+
+    void avatarMascotUploadAndRemove() {
+        QVERIFY(startReadyClient());
+        QSignalSpy done(m_client, &ServerClient::actionFinished);
+        m_client->updateProfile({{"mascot", QStringLiteral("moth")}});
+        QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(m_client->me().value("profile").toMap().value("avatar").toMap().value("mascot").toString(),
+                 QStringLiteral("moth"));
+        QVERIFY(m_client->avatarUrl().isEmpty());
+
+        QTemporaryDir dir;
+        const QString png = dir.filePath(QStringLiteral("a.png"));
+        QFile f(png);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray::fromHex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"));
+        f.close();
+        m_client->uploadAvatar(QUrl::fromLocalFile(png));
+        QTRY_COMPARE(done.size(), 2);
+        QVERIFY(done.at(1).at(1).toBool());
+        QVERIFY(m_client->avatarUrl().contains(QStringLiteral("/api/users/user-admin/avatar")));
+        QVERIFY(m_client->avatarUrl().contains(QStringLiteral("token=")));
+
+        m_client->removeAvatar();
+        QTRY_COMPARE(done.size(), 3);
+        QVERIFY(m_client->avatarUrl().isEmpty());
+    }
+
+    void changePasswordRotatesSession() {
+        QVERIFY(startReadyClient());
+        QSignalSpy done(m_client, &ServerClient::actionFinished);
+        m_client->changePassword(QStringLiteral("wrong"), QStringLiteral("newpassword1"));
+        QTRY_COMPARE(done.size(), 1);
+        QVERIFY(!done.at(0).at(1).toBool());
+        m_client->changePassword(QStringLiteral("password123"), QStringLiteral("newpassword1"));
+        QTRY_COMPARE(done.size(), 2);
+        QVERIFY(done.at(1).at(1).toBool());
+        QCOMPARE(m_stub->password, QStringLiteral("newpassword1"));
+        QCOMPARE(m_client->state(), QStringLiteral("ready"));
+    }
+
+    void preferredLanguageValidates() {
+        QVERIFY(startReadyClient());
+        QSignalSpy done(m_client, &ServerClient::actionFinished);
+        m_client->setPreferredLanguage(QStringLiteral("pt"));
+        QTRY_COMPARE(done.size(), 1);
+        QVERIFY(!done.at(0).at(1).toBool());
+        m_client->setPreferredLanguage(QStringLiteral("JPN"));
+        QTRY_COMPARE(done.size(), 2);
+        QCOMPARE(m_client->me().value("preferred_language").toString(), QStringLiteral("jpn"));
+    }
+
+    void linkCodeSyncAndList() {
+        QVERIFY(startReadyClient());
+        m_client->loadLinks();
+        QTRY_VERIFY(m_client->linksLoaded());
+        QVERIFY(m_client->links().isEmpty());
+        QVERIFY(!m_client->linkPinUrl().isEmpty());
+
+        QSignalSpy done(m_client, &ServerClient::actionFinished);
+        m_client->submitLinkCode(QStringLiteral("anilist"), QStringLiteral("bad"));
+        QTRY_COMPARE(done.size(), 1);
+        QVERIFY(done.at(0).at(2).toString().contains(QStringLiteral("rejected")));
+        m_client->submitLinkCode(QStringLiteral("anilist"), QStringLiteral("good-code"));
+        QTRY_COMPARE(m_client->links().size(), 1);
+
+        m_client->loadList(QString(), QString());
+        QTRY_COMPARE(m_client->listEntries().size(), 2);
+        m_client->loadList(QStringLiteral("manga"), QString());
+        QTRY_COMPARE(m_client->listEntries().size(), 1);
+        QVERIFY(!m_client->listLoading());
+
+        m_client->setLinkScrobble(QStringLiteral("anilist"), true);
+        QTRY_VERIFY(m_client->links().value(0).toMap().value("scrobble").toBool());
+        m_client->unlink(QStringLiteral("anilist"));
+        QTRY_VERIFY(m_client->links().isEmpty());
+    }
+
+    void integrationsKeepSecretWriteOnly() {
+        QVERIFY(startReadyClient());
+        m_client->loadIntegrations();
+        QTRY_VERIFY(m_client->integrations().contains(QStringLiteral("anilist")));
+        m_client->saveIntegrations(QStringLiteral("123"), QStringLiteral("s3cret"));
+        QTRY_VERIFY(m_client->integrations().value("anilist").toMap().value("secret_set").toBool());
+        QCOMPARE(m_client->integrations().value("anilist").toMap().value("client_id").toString(),
+                 QStringLiteral("123"));
+    }
+
+    void transcodeSettingsRoundTrip() {
+        QVERIFY(startReadyClient());
+        m_client->loadTranscodeSettings();
+        QTRY_COMPARE(m_client->transcodeSettings().value("crf").toInt(), 23);
+        QVERIFY(m_client->transcodeCapabilities().value("hardware").toMap().value("vaapi").toBool());
+        QVariantMap next = m_client->transcodeSettings();
+        next.insert("crf", 20);
+        m_client->saveTranscodeSettings(next);
+        QTRY_COMPARE(m_client->transcodeSettings().value("crf").toInt(), 20);
+        m_client->loadTranscodeSessions();
+        QTRY_COMPARE(m_client->transcodeSessions().size(), 1);
+        QSignalSpy done(m_client, &ServerClient::actionFinished);
+        m_client->cancelTranscodeSession(QStringLiteral("tx-1"));
+        QTRY_COMPARE(done.size(), 1);
+        QVERIFY(done.at(0).at(1).toBool());
+    }
+
+    void browseFoldersListsDirs() {
+        QVERIFY(startReadyClient());
+        m_client->browseFolders(QString());
+        QTRY_COMPARE(m_client->browseResult().value("path").toString(), QStringLiteral("/media"));
+        QCOMPARE(m_client->browseResult().value("dirs").toList().size(), 2);
+        m_client->browseFolders(QStringLiteral("/media/Anime"));
+        QTRY_COMPARE(m_client->browseResult().value("path").toString(), QStringLiteral("/media/Anime"));
+        QCOMPARE(m_client->browseResult().value("parent").toString(), QStringLiteral("/media"));
+    }
+
+    void deleteFileAndResetProgress() {
+        QVERIFY(startReadyClient());
+        QTRY_COMPARE(m_client->catalog().size(), 3);
+        QSignalSpy deleted(m_client, &ServerClient::itemDeleted);
+        m_client->deleteItemFile(QStringLiteral("movie-1"));
+        QTRY_COMPARE(deleted.size(), 1);
+        QVERIFY(m_stub->deletedItems.contains(QStringLiteral("movie-1")));
+
+        m_stub->progressPuts.clear();
+        m_client->resetProgress(QStringLiteral("show-1"));
+        QTRY_COMPARE(m_stub->progressPuts.size(), 1);
+        QCOMPARE(m_stub->progressPuts.first().value("position_sec").toDouble(), 0.0);
+        QTRY_COMPARE(m_client->progressFor(QStringLiteral("show-1")).value("position_sec").toDouble(), 0.0);
+    }
+
+    void readerPagesAndProgress() {
+        QVERIFY(startReadyClient());
+        m_client->loadReader(QStringLiteral("show-2"));
+        QTRY_VERIFY(!m_client->readerLoading());
+        QCOMPARE(m_client->readerView().value("pages").toList().size(), 3);
+        QCOMPARE(m_client->readerView().value("direction").toString(), QStringLiteral("rtl"));
+        QVERIFY(m_client->readerPageUrl(QStringLiteral("show-2"), 1).endsWith(QStringLiteral("/pages/1?token=test-token")));
+        m_stub->progressPuts.clear();
+        m_client->saveReaderProgress(QStringLiteral("show-2"), 2, 3);
+        QTRY_COMPARE(m_stub->progressPuts.size(), 1);
+        QCOMPARE(m_stub->progressPuts.first().value("position_sec").toDouble(), 3.0);
+        QVERIFY(m_stub->progressPuts.first().value("completed").toBool());
+        QVERIFY(m_client->isReadable(QStringLiteral("manga")));
+        QVERIFY(!m_client->isReadable(QStringLiteral("video")));
+    }
+
+    void userPlaybackLimitsPatch() {
+        QVERIFY(startReadyClient());
+        QSignalSpy done(m_client, &ServerClient::actionFinished);
+        m_client->setUserPlayback(QStringLiteral("user-guest"),
+                                  {{"allow_video_transcode", false}, {"max_bitrate_kbps", 4000}});
+        QTRY_COMPARE(done.size(), 1);
+        QCOMPARE(done.at(0).at(0).toString(), QStringLiteral("user-playback"));
+        QVERIFY(done.at(0).at(1).toBool());
+    }
+
     void createAndDeleteLibrary() {
         QVERIFY(startReadyClient());
         QTRY_COMPARE(m_client->libraries().size(), 2);

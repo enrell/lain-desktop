@@ -1,5 +1,7 @@
 #include "ServerClient.h"
 
+#include <algorithm>
+
 #include <QCryptographicHash>
 #include <QRegularExpression>
 #include <QSet>
@@ -168,6 +170,7 @@ void ServerClient::fetchMe() {
                         return;
                     }
                     const QJsonObject user = doc.object();
+                    setMe(user);
                     setSession(m_token, user.value("username").toString(), user.value("role").toString());
                     clearError();
                     setState(QStringLiteral("ready"));
@@ -217,6 +220,26 @@ void ServerClient::setup(const QString &username, const QString &password) {
 
 void ServerClient::logout() {
     m_generation++;
+    m_me.clear();
+    m_links.clear();
+    m_linkPinUrl.clear();
+    m_linksLoaded = false;
+    m_listEntries.clear();
+    m_integrations.clear();
+    m_transcodeSettings.clear();
+    m_transcodeCapabilities.clear();
+    m_transcodeSessions.clear();
+    m_browse.clear();
+    m_readerView.clear();
+    m_homeRecent = QJsonArray();
+    m_homeCont = QJsonArray();
+    emit linksChanged();
+    emit listChanged();
+    emit integrationsChanged();
+    emit transcodeChanged();
+    emit transcodeSessionsChanged();
+    emit browseChanged();
+    emit readerChanged();
     clearSession();
     clearSearch();
     m_raw = QJsonArray();
@@ -282,6 +305,14 @@ QString ServerClient::streamUrlFor(const QString &id) const {
 
 void ServerClient::requestJson(const QString &method, const QString &path, const QJsonObject &body,
                                const QUrlQuery &query, bool auth, JsonCallback cb) {
+    const QByteArray payload = body.isEmpty() ? QByteArray()
+                                              : QJsonDocument(body).toJson(QJsonDocument::Compact);
+    requestBytes(method, path, payload, QByteArrayLiteral("application/json"), query, auth, std::move(cb));
+}
+
+void ServerClient::requestBytes(const QString &method, const QString &path, const QByteArray &payload,
+                                const QByteArray &contentType, const QUrlQuery &query, bool auth,
+                                JsonCallback cb) {
     // DD-033: idempotent reads retry once on transport errors; mutations
     // never retry (progress has its own offline queue, admin ops confirm).
     // Lifetime without cycles: the in-flight reply (then the pending retry
@@ -291,7 +322,8 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
     struct Exchange {
         QString method;
         QString path;
-        QJsonObject body;
+        QByteArray payload;
+        QByteArray contentType;
         QUrlQuery query;
         bool auth = false;
         JsonCallback cb;
@@ -301,7 +333,8 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
     auto ex = std::make_shared<Exchange>();
     ex->method = method;
     ex->path = path;
-    ex->body = body;
+    ex->payload = payload;
+    ex->contentType = contentType;
     ex->query = query;
     ex->auth = auth;
     ex->cb = std::move(cb);
@@ -312,13 +345,12 @@ void ServerClient::requestJson(const QString &method, const QString &path, const
             return;
         std::shared_ptr<Exchange> current = std::move(locked);
         QNetworkRequest request(apiUrl(current->path, current->query));
-        request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+        request.setHeader(QNetworkRequest::ContentTypeHeader, current->contentType);
         request.setTransferTimeout(20000);
         if (current->auth && !m_token.isEmpty())
             request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
 
-        const QByteArray payload = current->body.isEmpty() ? QByteArray()
-                                                           : QJsonDocument(current->body).toJson(QJsonDocument::Compact);
+        const QByteArray &payload = current->payload;
         QNetworkReply *reply = nullptr;
         if (current->method == QLatin1String("POST"))
             reply = m_net->post(request, payload);
@@ -514,6 +546,8 @@ void ServerClient::rebuildCatalog() {
     buildSeries();
     emit catalogChanged();
     emit enrichQueueChanged();
+    if (!m_homeRecent.isEmpty() || !m_homeCont.isEmpty())
+        buildHome(m_homeRecent, m_homeCont);
     rebuildCollections();
     startAutoEnrich();
 }
@@ -676,6 +710,13 @@ QString ServerClient::nextEpisodeId(const QString &id) const {
     const QString seriesId = seriesIdFor(id);
     if (!seriesId.isEmpty() && seriesAutoplayMode(seriesId) == QLatin1String("off"))
         return {};
+    return followingEpisodeId(id);
+}
+
+QString ServerClient::followingEpisodeId(const QString &id) const {
+    const QString seriesId = seriesIdFor(id);
+    if (seriesId.isEmpty())
+        return {};
     for (const QVariant &s : m_series) {
         const QVariantMap info = s.toMap();
         if (info.value("id").toString() != seriesId)
@@ -826,14 +867,60 @@ void ServerClient::loadHome() {
 }
 
 void ServerClient::buildHome(const QJsonArray &recent, const QJsonArray &cont) {
-    QVariantList recentCards, contCards;
+    m_homeRecent = recent;
+    m_homeCont = cont;
+    // Web rules (utilities/progress.ts): Continue holds unfinished records
+    // past the first seconds, most recent first; reading and watching are
+    // separate habits, so comics/manga get their own rows.
+    QList<QJsonObject> records;
+    for (const QJsonValue &v : cont)
+        records << v.toObject();
+    std::sort(records.begin(), records.end(), [](const QJsonObject &a, const QJsonObject &b) {
+        return a.value("updated_at").toDouble() > b.value("updated_at").toDouble();
+    });
+    QVariantList recentCards, contCards, readCards, nextUp, readNext;
     for (const QJsonValue &v : recent)
         recentCards << normalize(v.toObject());
-    for (const QJsonValue &v : cont) {
-        const QString id = v.toObject().value("item_id").toString();
+    QSet<QString> touched;
+    for (const QJsonObject &p : records)
+        touched.insert(p.value("item_id").toString());
+    int active = 0;
+    for (const QJsonObject &p : records) {
+        const QString id = p.value("item_id").toString();
+        if (id.isEmpty() || p.value("completed").toBool() || p.value("position_sec").toDouble() < 5.0)
+            continue;
         const QJsonObject item = m_rawById.value(id);
-        if (!item.isEmpty())
+        if (item.isEmpty() || active >= 12)
+            continue;
+        ++active;
+        if (isReadable(item.value("kind").toString()))
+            readCards << normalize(item);
+        else
             contCards << normalize(item);
+    }
+    // Next up: one suggestion per show, the episode after the most
+    // recently finished one, unless it already has progress.
+    QSet<QString> seenSeries;
+    for (const QJsonObject &p : records) {
+        if (nextUp.size() + readNext.size() >= 6)
+            break;
+        const QString id = p.value("item_id").toString();
+        if (id.isEmpty() || !p.value("completed").toBool())
+            continue;
+        const QString seriesId = seriesIdFor(id);
+        if (seriesId.isEmpty() || seenSeries.contains(seriesId))
+            continue;
+        seenSeries.insert(seriesId);
+        const QString next = followingEpisodeId(id);
+        if (next.isEmpty() || touched.contains(next))
+            continue;
+        const QJsonObject item = m_rawById.value(next);
+        if (item.isEmpty())
+            continue;
+        if (isReadable(item.value("kind").toString()))
+            readNext << normalize(item);
+        else
+            nextUp << normalize(item);
     }
     QVariantMap hero;
     if (!contCards.isEmpty())
@@ -842,7 +929,11 @@ void ServerClient::buildHome(const QJsonArray &recent, const QJsonArray &cont) {
         hero = recentCards.first().toMap();
     m_home = QVariantMap{{"hero", hero},
                          {"continueWatching", contCards},
-                         {"recentlyAdded", recentCards}};
+                         {"continueReading", readCards},
+                         {"nextUp", nextUp},
+                         {"readNext", readNext},
+                         {"recentlyAdded", recentCards},
+                         {"catalogTotal", m_raw.size()}};
     emit homeChanged();
 }
 
