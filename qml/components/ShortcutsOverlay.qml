@@ -17,11 +17,14 @@ Item {
         {
             title: qsTr("Navigation"),
             keys: [
-                ["g h", "Home"],
-                ["g l", "Library"],
-                ["g s", "Search"],
-                ["g e", "Settings"],
-                ["/ or Ctrl+F", "Search"],
+                ["g h", qsTr("Home")],
+                ["g l", qsTr("Library")],
+                ["g m", qsTr("My list")],
+                ["g s", qsTr("Search")],
+                ["g e", qsTr("Settings")],
+                ["Ctrl K", qsTr("Command palette")],
+                ["/ or Ctrl+F", qsTr("Search")],
+                ["[ ]", qsTr("Previous · next settings section")],
                 ["?", qsTr("This panel")],
                 ["Esc", qsTr("Back / close")]
             ]
@@ -42,6 +45,17 @@ Item {
                 ["f", qsTr("Fullscreen")],
                 ["Esc", qsTr("Exit fullscreen / back")]
             ]
+        },
+        {
+            title: qsTr("Reader"),
+            keys: [
+                ["← →", qsTr("Turn pages (follows reading direction)")],
+                ["Space", qsTr("Next page")],
+                ["r", qsTr("Flip reading direction")],
+                ["d", qsTr("One or two pages")],
+                ["h", qsTr("Hide controls")],
+                ["n / p", qsTr("Next / previous chapter")]
+            ]
         }
     ]
 
@@ -53,7 +67,7 @@ Item {
     }
 
     Rectangle {
-        width: Math.min(560, overlay.width - 80)
+        width: Math.min(880, overlay.width - 80)
         height: Math.min(col.implicitHeight + 40, overlay.height - 80)
         anchors.centerIn: parent
         radius: Tokens.radiusLg
@@ -107,10 +121,16 @@ Item {
                 }
             }
 
+            GridLayout {
+                Layout.fillWidth: true
+                columns: width > 640 ? 2 : 1
+                columnSpacing: 32
+                rowSpacing: 20
             Repeater {
                 model: overlay.groups
                 delegate: ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignTop
                     spacing: 6
                     Text {
                         text: modelData.title
@@ -127,7 +147,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: 14
                             Text {
-                                Layout.preferredWidth: 130
+                                Layout.preferredWidth: 112
                                 text: modelData[0]
                                 color: Tokens.themeAccent
                                 font.family: Tokens.fontFamily
@@ -145,5 +165,6 @@ Item {
                 }
             }
         }
+}
     }
 }

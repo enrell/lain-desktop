@@ -14,11 +14,19 @@ ColumnLayout {
     signal openMedia(var media)
     signal playMedia(var media)
     signal openLibrary(string libraryId)
+    signal openSettings(string section, string anchor)
     spacing: Tokens.sectionGap
 
     readonly property var continueRow: home && home.continueWatching ? home.continueWatching : []
     readonly property var recentRow: home && home.recentlyAdded ? home.recentlyAdded : []
+    readonly property var readingRow: home && home.continueReading ? home.continueReading : []
+    readonly property var nextUpRow: home && home.nextUp ? home.nextUp : []
+    readonly property var readNextRow: home && home.readNext ? home.readNext : []
     readonly property bool empty: continueRow.length === 0 && recentRow.length === 0
+    readonly property bool admin: server.ready && server.role === "admin"
+    readonly property bool scanning: server.scanState && server.scanState.state === "running"
+    // Web home empty states: no library configured, or configured but unscanned.
+    readonly property string emptyKind: !empty ? "" : (libraries.length === 0 ? "nolibrary" : "unscanned")
     readonly property var heroMedia: continueRow.length > 0 ? continueRow[0] : (recentRow.length > 0 ? recentRow[0] : null)
     readonly property var upNextMedia: {
         if (!heroMedia)
@@ -84,6 +92,47 @@ ColumnLayout {
             model: continueRow
             delegate: LandscapeCard { media: modelData; onOpen: m => openMedia(m) }
         }
+        Row {
+            visible: root.scanning || (server.scanState && server.scanState.state === "error")
+            spacing: 8
+            UiBadge {
+                text: root.scanning ? qsTr("Scanning…") : qsTr("Last scan failed")
+                tone: root.scanning ? "accent" : "danger"
+            }
+        }
+        MediaRow {
+            Layout.fillWidth: true
+            visible: readingRow.length > 0
+            objectName: "readingRow"
+            title: qsTr("Continue reading")
+            actionLabel: qsTr("Open library")
+            onAction: openLibrary("")
+            rowHeight: Tokens.posterWidth * 1.5 + 46
+            model: readingRow
+            delegate: PosterCard { media: modelData; onOpen: m => openMedia(m) }
+        }
+        MediaRow {
+            Layout.fillWidth: true
+            visible: nextUpRow.length > 0
+            objectName: "nextUpRow"
+            title: qsTr("Next up")
+            actionLabel: qsTr("Open library")
+            onAction: openLibrary("")
+            rowHeight: Tokens.landscapeWidth * 9 / 16 + 46
+            model: nextUpRow
+            delegate: LandscapeCard { media: modelData; onOpen: m => openMedia(m) }
+        }
+        MediaRow {
+            Layout.fillWidth: true
+            visible: readNextRow.length > 0
+            objectName: "readNextRow"
+            title: qsTr("Read next")
+            actionLabel: qsTr("Open library")
+            onAction: openLibrary("")
+            rowHeight: Tokens.posterWidth * 1.5 + 46
+            model: readNextRow
+            delegate: PosterCard { media: modelData; onOpen: m => openMedia(m) }
+        }
         MediaRow {
             Layout.fillWidth: true
             visible: recentRow.length > 0
@@ -121,26 +170,52 @@ ColumnLayout {
     }
 
     ColumnLayout {
+        objectName: "homeEmpty"
         Layout.fillWidth: true
-        Layout.leftMargin: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
-        Layout.rightMargin: Layout.leftMargin
+        Layout.topMargin: 96
         Layout.bottomMargin: Tokens.sectionGap
         visible: empty
-        spacing: 8
+        spacing: 10
+        Glyph {
+            Layout.alignment: Qt.AlignHCenter
+            name: root.emptyKind === "nolibrary" ? "film" : "scan"
+            size: 28
+            color: Tokens.textTertiary
+        }
         Text {
-            text: qsTr("Your library is empty")
-            color: Tokens.textSecondary
+            Layout.alignment: Qt.AlignHCenter
+            text: root.emptyKind === "nolibrary" ? qsTr("No media yet") : qsTr("Library hasn't been scanned")
+            color: Tokens.textPrimary
             font.family: Tokens.fontSans
             font.pixelSize: Tokens.sectionSize
             font.weight: Font.DemiBold
         }
         Text {
-            Layout.maximumWidth: 560
-            text: qsTr("Create a library and scan it to make your media appear here.")
+            Layout.alignment: Qt.AlignHCenter
+            Layout.maximumWidth: 520
+            horizontalAlignment: Text.AlignHCenter
+            text: root.emptyKind === "nolibrary"
+                  ? (root.admin ? qsTr("Point Lain at a directory on this server and run a scan. Files stay where they are.")
+                                : qsTr("An administrator has not configured a library yet."))
+                  : qsTr("Libraries are configured, but no media has been indexed yet.")
             color: Tokens.textTertiary
             font.family: Tokens.fontSans
             font.pixelSize: Tokens.bodySize
             wrapMode: Text.WordWrap
+        }
+        UiButton {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 8
+            visible: root.admin
+            text: root.emptyKind === "nolibrary" ? qsTr("Add a library") : qsTr("Scan now")
+            icon: root.emptyKind === "nolibrary" ? "folder-plus" : "scan"
+            loading: root.scanning
+            onClicked: {
+                if (root.emptyKind === "nolibrary")
+                    root.openSettings("libraries", "add");
+                else
+                    server.triggerScan();
+            }
         }
     }
 

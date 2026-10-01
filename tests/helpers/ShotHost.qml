@@ -14,6 +14,17 @@ Rectangle {
     height: Math.max(900, loader.item ? loader.item.implicitHeight : 900)
     color: Tokens.bgPrimary
 
+    // Shots run standalone too (`-input tst_shot_x.qml`): sign in against
+    // the stub when no earlier suite did.
+    Component.onCompleted: if (server.state === "login") server.login("admin", "password123")
+    Connections {
+        target: server
+        function onStateChanged() {
+            if (server.state === "login")
+                server.login("admin", "password123");
+        }
+    }
+
     Loader {
         id: loader
         width: parent.width

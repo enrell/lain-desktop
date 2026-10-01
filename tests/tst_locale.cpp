@@ -55,6 +55,11 @@ private slots:
         QCOMPARE(locale.translate(nullptr, "Shows", nullptr, -1), QStringLiteral("Séries"));
         QCOMPARE(locale.translate(nullptr, "Server", nullptr, -1), QStringLiteral("Servidor"));
         QCOMPARE(locale.translate(nullptr, "Sign in", nullptr, -1), QStringLiteral("Entrar"));
+        // Web-parity surfaces (DD-037).
+        QCOMPARE(locale.translate(nullptr, "My list", nullptr, -1), QStringLiteral("Minha lista"));
+        QCOMPARE(locale.translate(nullptr, "Profile", nullptr, -1), QStringLiteral("Perfil"));
+        QCOMPARE(locale.translate(nullptr, "Continue reading", nullptr, -1), QStringLiteral("Continuar lendo"));
+        QCOMPARE(locale.translate(nullptr, "Transcoding", nullptr, -1), QStringLiteral("Transcodificação"));
         QCOMPARE(locale.translate(nullptr, "Invalid username or password.", nullptr, -1),
                  QStringLiteral("Usuário ou senha inválidos."));
         QCOMPARE(locale.translate(nullptr, "1 title", nullptr, -1), QStringLiteral("1 título"));

@@ -40,6 +40,7 @@ TestCase {
         compare(localeManager.available.length, 3);
         const view = createTemporaryObject(settingsComponent, host);
         verify(view);
+        view.open("profile");
 
         const title = findChild(view, "settingsTitle");
         verify(title !== null);
@@ -49,10 +50,10 @@ TestCase {
         verify(repeater !== null);
         compare(repeater.count, 3);
 
-        const playback = findChild(view, "playbackSection");
+        const playback = findChild(view, "rail-playback");
         verify(playback !== null && playback.visible);
 
-        const users = findChild(view, "usersSection");
+        const users = findChild(view, "rail-users");
         verify(users !== null);
         verify(!users.visible);
 
@@ -71,8 +72,29 @@ TestCase {
         tryCompare(server, "role", "admin");
         const view = createTemporaryObject(settingsComponent, host);
         verify(view);
-        const users = findChild(view, "usersSection");
+        const users = findChild(view, "rail-users");
         verify(users !== null);
         tryVerify(() => users.visible);
+    }
+
+    function test_rail_opens_sections_and_chords() {
+        if (!server.ready) {
+            server.login("admin", "password123");
+            tryCompare(server, "ready", true);
+        }
+        const view = createTemporaryObject(settingsComponent, host, { width: 1200 });
+        verify(view);
+        verify(view.open("libraries"));
+        tryCompare(view, "section", "libraries");
+        const pane = findChild(view, "settingsPane");
+        tryVerify(() => findChild(pane, "addLibraryButton") !== null);
+        verify(view.chord("s"));
+        compare(view.section, "security");
+        view.cycle(1);
+        compare(view.section, "desktop");
+        view.cycle(-2);
+        compare(view.section, "connections");
+        verify(!view.chord("z"));
+        view.open("profile");
     }
 }

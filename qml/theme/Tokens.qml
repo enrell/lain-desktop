@@ -23,6 +23,19 @@ QtObject {
     readonly property color hoverFill: Qt.tint(themeBg, Qt.alpha(themeFg, 0.07))
     readonly property color selectedFill: Qt.tint(themeBg, Qt.alpha(themeFg, 0.14))
 
+    // Web semantic roles (app.css): neutral hairlines independent of the
+    // accent, a field fill that stays visible when surface == background,
+    // and status colors (Omarchy only supplies urgent).
+    readonly property color hairline: Qt.alpha(themeFg, 0.09)
+    readonly property color field: Qt.tint(themeBg, Qt.alpha(themeFg, 0.06))
+    readonly property color fieldHover: Qt.tint(themeBg, Qt.alpha(themeFg, 0.09))
+    readonly property color danger: themeUrgent
+    readonly property color success: "#6ee7a8"
+    readonly property color warning: "#ffcf5c"
+    readonly property color accentSoft: Qt.alpha(themeAccent, 0.15)
+    readonly property color accentFg: omarchy.dark ? Qt.darker(themeAccent, 4.5) : "#ffffff"
+    readonly property color scrim: "#000000B8"
+
     readonly property color textPrimary: themeFg
     readonly property color textSecondary: Qt.alpha(themeFg, 0.68)
     readonly property color textTertiary: Qt.alpha(themeFg, 0.45)
@@ -55,4 +68,8 @@ QtObject {
     readonly property int posterWidth: 176
     readonly property int landscapeWidth: 300
     readonly property int buttonHeight: 44
+    readonly property int controlHeight: 36
+    readonly property int controlHeightSm: 32
+    readonly property int settingsRailWidth: 216
+    readonly property int settingsColumn: 1056
 }

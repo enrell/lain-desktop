@@ -52,3 +52,20 @@ function remaining(m) {
     var minutes = Math.max(1, Math.round(m.duration_sec * (1 - m.progress) / 60));
     return minutes + " min restantes";
 }
+
+// Web formatRelative: seconds since the epoch → "3 min ago"; past a
+// week the absolute date reads better than a large count of days.
+function relative(ts) {
+    if (!ts)
+        return "";
+    var s = Math.max(0, Date.now() / 1000 - ts);
+    if (s < 60)
+        return qsTr("just now");
+    if (s < 3600)
+        return qsTr("%1 min ago").arg(Math.round(s / 60));
+    if (s < 86400)
+        return qsTr("%1 h ago").arg(Math.round(s / 3600));
+    if (s < 7 * 86400)
+        return qsTr("%1 d ago").arg(Math.round(s / 86400));
+    return Qt.formatDate(new Date(ts * 1000), "d MMM yyyy");
+}

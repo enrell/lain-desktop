@@ -37,6 +37,20 @@ public:
     QStringList metadataOrder = {QStringLiteral("lain-metadata-nfo"),
                                  QStringLiteral("lain-metadata-anilist")};
 
+    // Account/profile state (DD-037 parity routes).
+    QString displayName;
+    QString bio;
+    QString avatarKind;
+    QString mascot;
+    int avatarVersion = 0;
+    QString preferredLanguage;
+    bool anilistLinked = false;
+    bool anilistScrobble = false;
+    QString integrationClientId;
+    bool integrationSecretSet = false;
+    int transcodeCrf = 23;
+    QStringList deletedItems;
+
     // Observations
     QList<QPair<QString, QString>> requests; // method and path without query
     QList<QJsonObject> progressPuts;

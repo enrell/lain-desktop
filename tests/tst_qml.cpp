@@ -76,9 +76,10 @@ public slots:
         engine->rootContext()->setContextProperty("stub", m_stub);
         engine->rootContext()->setContextProperty("buildTs", QStringLiteral("test"));
         engine->rootContext()->setContextProperty("appVersion", QStringLiteral("test"));
-        engine->rootContext()->setContextProperty(
-            "shotsDir", QDir(QCoreApplication::applicationDirPath() + QStringLiteral("/../shots"))
-                            .absolutePath());
+        const QString shots =
+            QDir(QCoreApplication::applicationDirPath() + QStringLiteral("/../shots")).absolutePath();
+        QDir().mkpath(shots);
+        engine->rootContext()->setContextProperty("shotsDir", shots);
 
         m_server->start();
     }

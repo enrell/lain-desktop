@@ -43,7 +43,8 @@ ColumnLayout {
     readonly property var genreList: media && media.genres
         ? String(media.genres).split("·").map(function (g) { return g.trim(); }).filter(function (g) { return g !== ""; })
         : []
-    readonly property bool resuming: media && !media.completed && media.position_sec >= 5
+    readonly property bool reading: !!media && server.isReadable(media.kind)
+    readonly property bool resuming: !!media && !media.completed && media.position_sec >= (reading ? 2 : 5)
 
     function fmtTime(sec) {
         var s = Math.floor(sec || 0);
@@ -165,50 +166,62 @@ ColumnLayout {
                 font.pixelSize: Tokens.metaSize + 1
             }
 
-            // Primary action + secondary actions.
+            // Primary action + secondary actions (web item page).
             RowLayout {
-                spacing: 12
+                spacing: 10
                 Rectangle {
+                    objectName: "detailPlay"
                     Layout.preferredWidth: playLabel.implicitWidth + 48
                     Layout.preferredHeight: Tokens.buttonHeight
                     radius: Tokens.radiusPill
                     color: Tokens.textPrimary
                     opacity: media && media.missing ? 0.45 : 1
-                    Text {
-                        id: playLabel
+                    activeFocusOnTab: !(media && media.missing)
+                    border.width: activeFocus ? 2 : 0
+                    border.color: Tokens.themeAccent
+                    Accessible.role: Accessible.Button
+                    Accessible.name: playLabel.text
+                    Keys.onReturnPressed: playMedia(media)
+                    Keys.onSpacePressed: playMedia(media)
+                    RowLayout {
                         anchors.centerIn: parent
-                        text: resuming ? qsTr("▶  Resume from %1").arg(fmtTime(media ? media.position_sec : 0)) : qsTr("▶  Play")
-                        color: Tokens.bgPrimary
-                        font.family: Tokens.fontSans
-                        font.pixelSize: 14
-                        font.weight: Font.Bold
+                        spacing: 8
+                        Glyph { name: root.reading ? "book" : "play"; filled: !root.reading; size: 14; color: Tokens.bgPrimary }
+                        Text {
+                            id: playLabel
+                            text: root.reading
+                                  ? (resuming ? qsTr("Continue reading") : qsTr("Read"))
+                                  : (resuming ? qsTr("Resume from %1").arg(fmtTime(media ? media.position_sec : 0)) : qsTr("Play"))
+                            color: Tokens.bgPrimary
+                            font.family: Tokens.fontSans
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                        }
                     }
                     MouseArea {
                         anchors.fill: parent
                         enabled: !(media && media.missing)
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: playMedia(media)
                     }
                 }
-                Rectangle {
-                    visible: media && (media.position_sec > 0 || media.completed)
-                    Layout.preferredWidth: startLabel.implicitWidth + 28
-                    Layout.preferredHeight: 32
-                    radius: Tokens.radiusPill
-                    color: "transparent"
-                    border.color: Tokens.borderSubtle
-                    Text {
-                        id: startLabel
-                        anchors.centerIn: parent
-                        text: qsTr("↺  Start over")
-                        color: Tokens.textSecondary
-                        font.family: Tokens.fontSans
-                        font.pixelSize: 12
-                    }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: if (media && media.id && media.duration_sec > 0)
-                            server.reportProgress(media.id, 0, media.duration_sec, false)
-                    }
+                UiButton {
+                    objectName: "resetProgress"
+                    visible: !!media && (media.position_sec > 0 || media.completed)
+                    text: qsTr("Reset progress")
+                    icon: "rotate-ccw"
+                    variant: "ghost"
+                    size: "sm"
+                    onClicked: server.resetProgress(media.id)
+                }
+                UiButton {
+                    objectName: "deleteFile"
+                    visible: !!media && !media.missing && server.ready && server.role === "admin"
+                    text: qsTr("Delete file")
+                    icon: "trash"
+                    variant: "ghost"
+                    size: "sm"
+                    onClicked: deleteModal.open()
                 }
             }
 
@@ -567,5 +580,29 @@ ColumnLayout {
                 }
             }
         }
+    }
+
+    // File delete (admin, server D-073): the bytes go away for every user;
+    // the catalog row stays as missing so progress and metadata survive.
+    UiModal {
+        id: deleteModal
+        title: qsTr("Delete this file?")
+        description: qsTr("The file is removed from disk for every user. The catalog entry stays as missing, so progress and metadata come back if the file does.")
+        Text {
+            Layout.fillWidth: true
+            text: media ? media.file_path : ""
+            color: Tokens.textSecondary
+            font.family: Tokens.fontFamily
+            font.pixelSize: 12
+            wrapMode: Text.WrapAnywhere
+        }
+        footer: [
+            UiButton { text: qsTr("Cancel"); variant: "ghost"; onClicked: deleteModal.close() },
+            UiButton {
+                text: qsTr("Delete file")
+                variant: "danger"
+                onClicked: { deleteModal.close(); server.deleteItemFile(media.id); }
+            }
+        ]
     }
 }

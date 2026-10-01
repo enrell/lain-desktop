@@ -31,6 +31,22 @@ qt_add_qml_module(lain_core
         qml/theme/Color.js
         qml/theme/Format.js
         qml/components/TopBar.qml
+        qml/components/Glyph.qml
+        qml/components/Mascot.qml
+        qml/components/Avatar.qml
+        qml/components/UiButton.qml
+        qml/components/UiSpinner.qml
+        qml/components/UiBadge.qml
+        qml/components/UiSwitch.qml
+        qml/components/UiField.qml
+        qml/components/UiTextArea.qml
+        qml/components/UiSelect.qml
+        qml/components/UiModal.qml
+        qml/components/Toaster.qml
+        qml/components/SettingsGroup.qml
+        qml/components/SettingRow.qml
+        qml/components/ListEntryCard.qml
+        qml/components/CommandPalette.qml
         qml/components/LibrarySelect.qml
         qml/components/MediaRow.qml
         qml/components/PosterCard.qml
@@ -43,7 +59,21 @@ qt_add_qml_module(lain_core
         qml/components/ConfirmDialog.qml
         qml/components/ShortcutsOverlay.qml
         qml/components/Hero.qml
+        qml/views/settings/SettingsPage.qml
+        qml/views/settings/ProfileSection.qml
+        qml/views/settings/PlaybackSection.qml
+        qml/views/settings/ConnectionsSection.qml
+        qml/views/settings/SecuritySection.qml
+        qml/views/settings/DesktopSection.qml
+        qml/views/settings/LibrariesSection.qml
+        qml/views/settings/UsersSection.qml
+        qml/views/settings/TranscodingSection.qml
+        qml/views/settings/IntegrationsSection.qml
+        qml/views/settings/PluginsSection.qml
+        qml/views/settings/BackupSection.qml
         qml/views/HomeView.qml
+        qml/views/MyListView.qml
+        qml/views/ReaderView.qml
         qml/views/LibraryView.qml
         qml/views/DetailView.qml
         qml/views/SeriesView.qml
@@ -66,7 +96,7 @@ qt_add_qml_module(lain_core
 )
 target_sources(lain_core PRIVATE
     src/MpvItem.h src/MpvItem.cpp
-    src/ServerClient.h src/ServerClient.cpp
+    src/ServerClient.h src/ServerClient.cpp src/ServerClientParity.cpp
     src/OmarchyTheme.h src/OmarchyTheme.cpp
     src/LocaleManager.h src/LocaleManager.cpp
     src/Provisioning.h src/Provisioning.cpp

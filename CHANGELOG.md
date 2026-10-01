@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Web parity (DD-037): Settings adopts the web rail (YOU: Profile,
+  Playback, Connections, Security, Desktop; SERVER: Libraries, Users,
+  Transcoding, Integrations, Plugins, Backup) with hairline rows,
+  `g`-chords and `[`/`]` section cycling.
+- Profile: display name, bio, avatar upload, initials or one of eight
+  mascots; avatars appear in the header, account menu and Users.
+- Security: change password with automatic session re-mint.
+- Connections and My list: link AniList (redirect or pin code), sync,
+  scrobble, disconnect, and browse the unified list by type and status.
+- Admin: server folder picker when adding libraries, scan diagnostics
+  per root, per-user playback limits, AniList OAuth integration, full
+  transcoding settings with staged save and live sessions, and a web
+  style plugin Replace dialog.
+- Ctrl+K command palette over actions, pages, every settings row and
+  library titles; web account menu; scanning indicator; toasts.
+- Home: Next up, Continue reading and Read next rows, plus the web's
+  "no library" / "not scanned" empty states with admin actions.
+- Item page: Reset progress and admin Delete file.
+- Comic and manga reader with reading direction, two-page spreads and
+  web-compatible progress.
+- Default and per-library-type Anime4K effect applied at playback start.
+
+### Fixed
+- Release builds no longer crash in the accent palette on newer Qt.
+- Visual-QA shots create `build/shots/` and sign in when run alone.
+- PT-BR covers every interface string again.
+
 ## [0.3.0] - 2026-09-11
 
 ### Added

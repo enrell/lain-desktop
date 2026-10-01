@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml
 import QtQuick.Layouts
 import Lain
 import "components"
@@ -17,6 +18,7 @@ Window {
     property var currentSeries: null
     property string route: "home"
     property string returnRoute: "home"
+    property var readerMedia: null
 
     // Find the series object a normalized card belongs to (if any).
     function seriesFor(media) {
@@ -44,7 +46,29 @@ Window {
         }
     }
 
+    function navigate(r) {
+        root.route = r;
+        if (r === "search")
+            searchView.focusInput();
+        page.contentY = 0;
+    }
+
+    function openSettings(section, anchor) {
+        root.navigate("settings");
+        if (section)
+            settingsView.open(section, anchor || "");
+    }
+
     function playMedia(m) {
+        // Comics and manga open in the reader, not the video player (D-085).
+        if (server.isReadable(m.kind)) {
+            server.openMedia(m.id);
+            root.readerMedia = m;
+            root.returnRoute = root.route === "reader" ? root.returnRoute : root.route;
+            root.route = "reader";
+            page.contentY = 0;
+            return;
+        }
         server.openMedia(m.id);
         server.requestPlayback(m.id);
         root.returnRoute = root.route === "player" ? root.returnRoute : root.route;
@@ -70,6 +94,7 @@ Window {
                 home: root.homeData
                 onOpenMedia: m => root.openMedia(m)
                 onPlayMedia: m => root.playMedia(m)
+                onOpenSettings: (section, anchor) => root.openSettings(section, anchor)
                 onOpenLibrary: id => {
                     root.route = "library";
                     libraryView.selectedLibrary = id;
@@ -81,6 +106,12 @@ Window {
                 visible: root.route === "library"
                 onOpenMedia: m => root.openMedia(m)
                 onOpenSeries: s => { root.returnRoute = "library"; root.currentSeries = s; root.route = "series"; }
+            }
+            MyListView {
+                id: myListView
+                Layout.fillWidth: true
+                visible: root.route === "list"
+                onOpenConnections: root.openSettings("connections", "anilist")
             }
             SearchView {
                 id: searchView
@@ -116,12 +147,24 @@ Window {
                     server.refresh();
                 }
             }
+            ReaderView {
+                id: readerView
+                visible: root.route === "reader"
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.height
+                media: root.readerMedia
+                onBack: {
+                    root.route = root.returnRoute === "reader" ? "home" : root.returnRoute;
+                    server.refresh();
+                }
+                onOpenMedia: m => { root.readerMedia = m; server.openMedia(m.id); }
+            }
             SettingsView {
+                id: settingsView
                 visible: root.route === "settings"
                 Layout.fillWidth: true
-                Layout.leftMargin: Math.max(Tokens.pageMargin, (root.width - Tokens.contentWidth) / 2 + Tokens.pageMargin)
-                Layout.rightMargin: Layout.leftMargin
-                Layout.topMargin: 16
+                Layout.preferredHeight: implicitHeight
+                scrollY: page.contentY
                 onLoggedOut: root.route = "home"
             }
         }
@@ -133,16 +176,13 @@ Window {
         anchors.right: parent.right
         anchors.top: parent.top
         z: 10
-        visible: server.ready && root.visibility !== Window.FullScreen && root.route !== "player"
+        visible: server.ready && root.visibility !== Window.FullScreen && root.route !== "player" && root.route !== "reader"
         current: root.route
-        onNavigate: r => {
-            root.route = r;
-            if (r === "search")
-                searchView.focusInput();
-            page.contentY = 0;
-        }
+        onNavigate: r => root.navigate(r)
+        onOpenSettings: s => root.openSettings(s, "")
         onLogout: server.logout()
         onHelpRequested: shortcutsOverlay.open()
+        onPaletteRequested: palette.open()
     }
 
     // Text fields eat letters themselves; shortcut matches can shadow
@@ -154,12 +194,12 @@ Window {
 
     // Ctrl+F / "/" jump straight to the search page (web parity).
     Shortcut {
-        enabled: server.ready
+        enabled: server.ready && root.route !== "reader"
         sequence: "Ctrl+F"
         onActivated: { root.route = "search"; searchView.focusInput(); }
     }
     Shortcut {
-        enabled: server.ready && !root.typing()
+        enabled: server.ready && !root.typing() && root.route !== "reader"
         sequence: "/"
         onActivated: { root.route = "search"; searchView.focusInput(); }
     }
@@ -178,20 +218,68 @@ Window {
     property bool gArmed: false
     Timer { id: gTimer; interval: 700; onTriggered: root.gArmed = false }
     Shortcut {
-        enabled: server.ready && !root.typing() && root.route !== "player"
+        enabled: server.ready && !root.typing() && root.route !== "player" && root.route !== "reader" && !palette.visible
         sequence: "g"
         onActivated: { root.gArmed = true; gTimer.restart(); }
     }
-    Shortcut { enabled: root.gArmed; sequence: "h"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "home"; } }
-    Shortcut { enabled: root.gArmed; sequence: "l"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "library"; } }
-    Shortcut { enabled: root.gArmed; sequence: "s"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "search"; searchView.focusInput(); } }
-    Shortcut { enabled: root.gArmed; sequence: "e"; onActivated: { root.gArmed = false; gTimer.stop(); root.route = "settings"; } }
+    // Second key of a chord. Inside Settings the web's section letters win
+    // (g p profile, g l libraries, g s security…); elsewhere DD-036 applies.
+    function chord(key) {
+        root.gArmed = false;
+        gTimer.stop();
+        if (root.route === "settings" && settingsView.chord(key))
+            return;
+        if (key === "h") root.navigate("home");
+        else if (key === "l") root.navigate("library");
+        else if (key === "m") root.navigate("list");
+        else if (key === "s") root.navigate("search");
+        else if (key === "e") root.navigate("settings");
+    }
+    Instantiator {
+        model: ["h", "l", "m", "s", "e", "p", "y", "c", "d", "u", "t", "i", "x", "b"]
+        delegate: Shortcut {
+            required property string modelData
+            enabled: root.gArmed
+            sequence: modelData
+            onActivated: root.chord(modelData)
+        }
+    }
+    Shortcut {
+        enabled: root.route === "settings" && !root.typing()
+        sequence: "]"
+        onActivated: settingsView.cycle(1)
+    }
+    Shortcut {
+        enabled: root.route === "settings" && !root.typing()
+        sequence: "["
+        onActivated: settingsView.cycle(-1)
+    }
+
+    // Modals, selects and menus lift themselves to the window content item
+    // and expose `opened` + close(); Esc closes the topmost one.
+    function closeTopOverlay() {
+        var kids = root.contentItem.children;
+        for (var i = kids.length - 1; i >= 0; --i) {
+            var k = kids[i];
+            if (k.opened === true && typeof k.close === "function") {
+                k.close();
+                return true;
+            }
+        }
+        return false;
+    }
 
     // Esc tiers: shortcuts overlay → player popups → fullscreen → back.
     Shortcut {
         sequence: "Esc"
         onActivated: {
-            if (shortcutsOverlay.visible)
+            if (palette.visible)
+                palette.close();
+            else if (root.closeTopOverlay())
+                return;
+            else if (root.route === "reader")
+                readerView.close();
+            else if (shortcutsOverlay.visible)
                 shortcutsOverlay.close();
             else if (root.route === "player" && playerView.closeChrome())
                 return;
@@ -222,6 +310,43 @@ Window {
     Shortcut { enabled: root.route === "player"; sequence: "P"; onActivated: playerView.stepEpisode(-1) }
 
     ShortcutsOverlay { id: shortcutsOverlay }
+
+    CommandPalette {
+        id: palette
+        onNavigate: r => root.navigate(r)
+        onOpenSettings: (section, anchor) => root.openSettings(section, anchor)
+        onOpenMedia: m => { root.openMedia(m); page.contentY = 0; }
+    }
+    Shortcut {
+        enabled: server.ready && root.route !== "player"
+        sequence: "Ctrl+K"
+        onActivated: palette.visible ? palette.close() : palette.open()
+    }
+
+    Toaster {
+        id: toaster
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 16
+        z: 3000
+        visible: server.ready
+    }
+    // Admin actions still report through adminStatus/errorMessage.
+    Connections {
+        target: server
+        function onAdminChanged() {
+            if (server.adminStatus !== "")
+                toaster.show("success", server.adminStatus);
+        }
+        function onItemDeleted(id) {
+            if (root.route === "detail")
+                root.navigate("library");
+        }
+        function onErrorMessageChanged() {
+            if (server.ready && server.errorMessage !== "")
+                toaster.show("error", server.errorMessage);
+        }
+    }
 
     LoginView {
         anchors.fill: parent
